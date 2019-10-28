@@ -1,0 +1,14 @@
+- Kto je cieľovka?
+- Handling permissions (setuid fuj)
+- Features:
+  - Nastavovanie jasu displeja
+  - Časované nastavovanie:
+    - Jasu (DPMS / XSet)
+    - Lock
+    - Suspend
+  - Nastavovanie power-saving nastavení (?)
+  - Handling ACPI eventov
+    - Najlepšie reagovať na logind DBus eventy a volať ho
+  - Tray-notifier o aplikáciách, ktoré majú inhibt
+  - Možnosť ručne inhibitovať
+- Závislosť na systemd?
