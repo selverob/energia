@@ -22,6 +22,7 @@ dependencies = [
 name = "appindicator"
 version = "0.1.0"
 dependencies = [
+ "dbus",
  "glib",
  "gtk",
  "gtk-sys",
@@ -171,6 +172,16 @@ dependencies = [
  "textwrap",
  "unicode-width",
  "vec_map",
+]
+
+[[package]]
+name = "dbus"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fd043051adb767dd40f869e6034c8ea4d3a0a719e78d4058f705a8038649059"
+dependencies = [
+ "libc",
+ "libdbus-sys",
 ]
 
 [[package]]
@@ -495,6 +506,15 @@ name = "libc"
 version = "0.2.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d515b1f41455adea1313a4a2ac8a8a477634fbae63cc6100e3aebb207ce61558"
+
+[[package]]
+name = "libdbus-sys"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc12a3bc971424edbbf7edaf6e5740483444db63aa8e23d3751ff12a30f306f0"
+dependencies = [
+ "pkg-config",
+]
 
 [[package]]
 name = "libloading"
