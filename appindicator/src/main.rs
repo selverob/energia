@@ -1,7 +1,5 @@
 mod session;
 
-use std::env;
-
 use gtk::prelude::*;
 use libappindicator::{AppIndicator, AppIndicatorStatus_APP_INDICATOR_STATUS_ACTIVE};
 use glib::source::{Continue, timeout_add_local};
@@ -22,9 +20,10 @@ fn main() {
         let inhibitors = proxy.list_inhibitors().unwrap();
         let mut m = gtk::Menu::new();
         for (_, app, _, _, _, _) in inhibitors {
-            let mi = gtk::MenuItemBuilder::new().;
-            builder.label
-            let mi = gtk::MenuItem::new_with_label(&app);
+            let mi = gtk::MenuItemBuilder::new()
+                .label(&app)
+                .sensitive(false)
+                .build();
             m.append(&mi);
         }
         indicator.set_menu(&mut m); 
