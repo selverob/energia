@@ -1,0 +1,25 @@
+digraph core {
+    check [label="Check for inhibitions"];
+    noInh [label="Active"];
+    delayInh [label="Delay inhibitions exist"];
+    blockInh [label="Block inhibitions exist"];
+    waitDelay [label="Wait for max inhibition delay"];
+    l1 [label="L1 idleness"];
+    l2 [label="L2 idleness"];
+    l3 [label="L3 idleness"];
+    intermHelper [shape=point,width=0.01,height=0.01];
+
+    noInh -> check [label="Inhibition change"];
+    check -> noInh [label="No inhibitions"];
+    check -> delayInh [label="Only delay inhibitions"];
+    delayInh -> check [label="Inhibition change"];
+    check -> blockInh [label="Blocking inhibitions"];
+    blockInh -> check [label="Inhibition change"];
+    delayInh -> waitDelay [label="Display server message"];
+    noInh -> l1 [label="Display server message"];
+    waitDelay -> l1 [label="Delay elapsed"];
+    l1 -> l2 [label="Display server message"];
+    l2 -> l3 [label="Display server message"];
+    {l1, l2, l3} -> intermHelper [dir=none];
+    intermHelper -> check [label="Activity or inhibition change"];
+}
