@@ -3,7 +3,7 @@ mod dbus;
 use crate::dbus::{login_manager, session};
 
 use anyhow::{bail, Result};
-use log::{info};
+use log::info;
 use std::thread::sleep;
 use std::time::Duration;
 use zbus;
@@ -30,7 +30,8 @@ fn monitor_session_idle_status(
     conn: &zbus::Connection,
     session_path: OwnedObjectPath,
 ) -> Result<()> {
-    let session_proxy = session::SessionProxy::new_for(&conn, "org.freedesktop.login1", session_path.as_str())?;
+    let session_proxy =
+        session::SessionProxy::new_for(&conn, "org.freedesktop.login1", session_path.as_str())?;
     loop {
         let hint = session_proxy.idle_hint()?;
         info!("Idle hint is: {}", hint);
