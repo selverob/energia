@@ -1,16 +1,14 @@
-use std::thread::sleep;
-
-use super::idleness_monitor::IdlenessMonitor;
+use super::idleness_monitor::{IdlenessMonitor, SystemState};
 use anyhow::{anyhow, Context, Result};
-use crossbeam_channel;
 use log::{debug, error};
 use x11rb::connection::{Connection, RequestConnection};
-use x11rb::protocol::screensaver::{self, ConnectionExt as _, Kind, State};
+use x11rb::protocol::screensaver::{self, ConnectionExt as _, State};
 use x11rb::protocol::xproto::{Blanking, ConnectionExt as _, Exposures, WindowClass};
+use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 
 pub struct X11IdlenessMonitor {
-    event_receiver: crossbeam_channel::Receiver<()>,
+    event_receiver: crossbeam_channel::Receiver<SystemState>,
     command_connection: RustConnection,
 }
 
@@ -32,7 +30,7 @@ impl X11IdlenessMonitor {
 }
 
 impl IdlenessMonitor for X11IdlenessMonitor {
-    fn get_idleness_channel(&self) -> crossbeam_channel::Receiver<()> {
+    fn get_idleness_channel(&self) -> crossbeam_channel::Receiver<SystemState> {
         self.event_receiver.clone()
     }
 
@@ -45,27 +43,29 @@ impl IdlenessMonitor for X11IdlenessMonitor {
     }
 }
 
-fn start_event_receiver(display_name: Option<&str>) -> Result<crossbeam_channel::Receiver<()>> {
+fn start_event_receiver(
+    display_name: Option<&str>,
+) -> Result<crossbeam_channel::Receiver<SystemState>> {
     let (event_connection, screen_num) = RustConnection::connect(display_name)?;
     let window_id = create_window(&event_connection, screen_num)?;
     event_connection
         .screensaver_select_input(window_id, screensaver::Event::NOTIFY_MASK)?
         .check()
         .context("Couldn't set event mask for screensaver events")?;
-    let (tx, rx) = crossbeam_channel::bounded(3);
+    let (tx, rx) = crossbeam_channel::bounded::<SystemState>(3);
     std::thread::spawn(move || loop {
         let event_result = event_connection.wait_for_event();
-        debug!("{:?}", event_result);
-        if event_result.is_err() {
-            error!(
-                "Error received when waiting for idleness event: {:?}",
-                event_result.err()
-            );
-            continue;
-        }
         debug!("Received idleness event from X11");
-        tx.send(())
-            .unwrap_or_else(|err| error!("Couldn't notify about idleness event: {}", err));
+        match event_result {
+            Err(err) => {
+                error!("Error received when waiting for idleness event: {:?}", err);
+                continue;
+            }
+            Ok(Event::ScreensaverNotify(event)) => tx
+                .send(event.state.into())
+                .unwrap_or_else(|err| error!("Couldn't notify about idleness event: {}", err)),
+            _ => error!("Unknown event received from X11"),
+        }
     });
     Ok(rx)
 }
@@ -96,4 +96,16 @@ fn create_window(connection: &RustConnection, screen_num: usize) -> Result<u32> 
         .context("Couldn't map screensaver state monitoring window")?;
     connection.flush()?;
     Ok(window_id)
+}
+
+impl Into<SystemState> for State {
+    fn into(self) -> SystemState {
+        match self {
+            State::ON => SystemState::Idle,
+            State::CYCLE => SystemState::Idle,
+            State::OFF => SystemState::Awakened,
+            State::DISABLED => SystemState::Awakened,
+            _ => unreachable!(),
+        }
+    }
 }

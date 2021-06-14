@@ -1,9 +1,7 @@
 mod dbus;
 mod idleness;
 
-use crate::dbus::{login_manager, session};
-
-use anyhow::{bail, Result};
+use anyhow::Result;
 use idleness::idleness_monitor::IdlenessMonitor;
 use log::info;
 use std::time::{Duration, Instant};
@@ -18,9 +16,12 @@ fn main() -> Result<()> {
     monitor.set_idleness_timeout(15)?;
     info!("Idleness timeout set");
     let receiver = monitor.get_idleness_channel();
-    let result = receiver.recv_deadline(Instant::now() + Duration::from_secs(30));
-    if result.is_ok() {
-        info!("Got screensaver event");
+    loop {
+        let result = receiver.recv_deadline(Instant::now() + Duration::from_secs(20));
+        match result {
+            Ok(state) => info!("Got screensaver event, system is {:?}", state),
+            Err(_) => break,
+        };
     }
     monitor.set_idleness_timeout(-1)
 }
