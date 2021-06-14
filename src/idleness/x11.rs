@@ -3,7 +3,7 @@ use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use x11rb::connection::{Connection, RequestConnection};
 use x11rb::protocol::screensaver::{self, ConnectionExt as _, State};
-use x11rb::protocol::xproto::{Blanking, ConnectionExt as _, Exposures, WindowClass};
+use x11rb::protocol::xproto::{Blanking, ConnectionExt as _, Exposures};
 use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 
@@ -23,8 +23,8 @@ impl X11IdlenessMonitor {
         }
         let event_receiver = start_event_receiver(display_name)?;
         Ok(X11IdlenessMonitor {
-            command_connection,
             event_receiver,
+            command_connection,
         })
     }
 }
@@ -47,9 +47,12 @@ fn start_event_receiver(
     display_name: Option<&str>,
 ) -> Result<crossbeam_channel::Receiver<SystemState>> {
     let (event_connection, screen_num) = RustConnection::connect(display_name)?;
-    let window_id = create_window(&event_connection, screen_num)?;
+    let screen = &event_connection.setup().roots[screen_num];
+    // This is simple and will possibly break the moment user has an actual screensaver installed,
+    // we may need to replace this with screensaver installation, look into xss-lock (register_screensaver function)
+    // for inspiration
     event_connection
-        .screensaver_select_input(window_id, screensaver::Event::NOTIFY_MASK)?
+        .screensaver_select_input(screen.root, screensaver::Event::NOTIFY_MASK)?
         .check()
         .context("Couldn't set event mask for screensaver events")?;
     let (tx, rx) = crossbeam_channel::bounded::<SystemState>(3);
@@ -68,34 +71,6 @@ fn start_event_receiver(
         }
     });
     Ok(rx)
-}
-
-fn create_window(connection: &RustConnection, screen_num: usize) -> Result<u32> {
-    let screen = &connection.setup().roots[screen_num];
-    let window_id = connection.generate_id()?;
-
-    connection
-        .create_window(
-            x11rb::COPY_DEPTH_FROM_PARENT,
-            window_id,
-            screen.root,
-            0,
-            0,
-            1,
-            1,
-            0,
-            WindowClass::INPUT_OUTPUT,
-            screen.root_visual,
-            &Default::default(),
-        )?
-        .check()
-        .context("Couldn't create screensaver state monitoring window")?;
-    connection
-        .map_window(window_id)?
-        .check()
-        .context("Couldn't map screensaver state monitoring window")?;
-    connection.flush()?;
-    Ok(window_id)
 }
 
 impl Into<SystemState> for State {
