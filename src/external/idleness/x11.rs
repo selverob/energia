@@ -38,7 +38,7 @@ impl IdlenessMonitor for X11IdlenessMonitor {
         debug!("Setting X11 idleness timeout to {}", timeout);
         Ok(self
             .command_connection
-            .set_screen_saver(timeout, 0, Blanking::DEFAULT, Exposures::DEFAULT)?
+            .set_screen_saver(timeout, 0, Blanking::NOT_PREFERRED, Exposures::DEFAULT)?
             .check()?)
     }
 }

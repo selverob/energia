@@ -1,0 +1,32 @@
+digraph G {
+    init [label = "Setting 3m timeout"];
+    wait1 [label = "Waiting for initial timeout"];
+    cfi1 [label = "Check for inhibitions"]
+    do_logind [label = "Set system to idle in logind"];
+    rb_logind [label = "Set system to active in logind"];
+    do_dim [label = "Dim screen"];
+    rb_dim [label = "Undim screen"];
+    wait2 [label = "Set 1m timeout and wait"];
+    do_lock [label = "Lock the screen"];
+    do_screensaver [label = "Enable screensaver"];
+    wait3 [label = "Set 11m timeout and wait"];
+    do_mpris [label = "Stop music player"];
+
+    init -> wait1 [label = set];
+    wait1 -> cfi1 [label = "passed"];
+    cfi1 -> init [label = "inhibitions found"];
+    cfi1 -> do_logind [label = "no inhibitions"];
+    do_logind -> rb_logind [label = "user activity"];
+    rb_dim -> rb_logind [label = "done"];
+    rb_logind -> init [label = "done"];
+    do_logind -> do_dim [label = "done"];
+    do_dim -> rb_dim [label = "user activity"];
+    do_dim -> wait2 [label = "done"];
+    wait2 -> rb_dim [label = "user activity"];
+    wait2 -> do_lock [label = "passed"]
+    do_lock -> do_screensaver [label = "done"]
+    do_screensaver -> wait3 [label = "done"]
+    wait3 -> do_mpris [label = "done"]
+    wait3 -> rb_dim [label = "locker quit"]
+    do_mpris -> rb_dim [label = "locker quit"]
+}
