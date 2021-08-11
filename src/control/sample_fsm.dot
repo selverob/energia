@@ -1,7 +1,8 @@
 digraph G {
     init [label = "Setting 3m timeout"];
     wait1 [label = "Waiting for initial timeout"];
-    cfi1 [label = "Check for inhibitions"]
+    cfi1 [label = "Check for inhibitions"];
+    inh_wait [label = "Wait for delay inhibitions"];
     do_logind [label = "Set system to idle in logind"];
     rb_logind [label = "Set system to active in logind"];
     do_dim [label = "Dim screen"];
@@ -15,6 +16,9 @@ digraph G {
     init -> wait1 [label = set];
     wait1 -> cfi1 [label = "passed"];
     cfi1 -> init [label = "inhibitions found"];
+    cfi1 -> inh_wait [label = "delay inhibitions exist"];
+    inh_wait -> do_logind [label = "passed"];
+    inh_wait -> init [label = "user activity"];
     cfi1 -> do_logind [label = "no inhibitions"];
     do_logind -> rb_logind [label = "user activity"];
     rb_dim -> rb_logind [label = "done"];
