@@ -15,6 +15,7 @@ digraph G {
 
     init -> wait1 [label = set];
     wait1 -> cfi1 [label = "passed"];
+    wait1 -> init [label = "user activity"]
     cfi1 -> init [label = "inhibitions found"];
     cfi1 -> inh_wait [label = "delay inhibitions exist"];
     inh_wait -> do_logind [label = "passed"];

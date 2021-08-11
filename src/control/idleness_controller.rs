@@ -13,6 +13,11 @@ use std::collections::VecDeque;
 #[rtype(result = "()")]
 struct Reset {}
 
+enum State {
+    Waiting,
+    ProcessingEffect,
+}
+
 pub struct IdlenessController {
     effects: Vec<Effect>,
     idleness_sensor: Option<Addr<idleness_sensor::IdlenessSensor>>,
@@ -59,6 +64,7 @@ impl Actor for IdlenessController {
 impl Handler<Reset> for IdlenessController {
     type Result = ();
     fn handle(&mut self, _msg: Reset, _ctx: &mut Context<Self>) -> Self::Result {
+        log::info!("Resetting IdlenessController");
         while let Some(effector) = self.rollback_stack.pop() {
             match effector.do_send(Rollback) {
                 Err(send_error) => {
@@ -67,6 +73,7 @@ impl Handler<Reset> for IdlenessController {
                 Ok(()) => (),
             }
         }
+        self.reinitialize_effect_queue()
     }
 }
 

@@ -1,9 +1,9 @@
 use super::messages::*;
 use actix::prelude::*;
 use anyhow::Result;
-use log::info;
+use log;
 
-#[derive(Message)]
+#[derive(Message, PartialEq, Eq)]
 #[rtype(result = "anyhow::Result<()>")]
 pub struct SetTimeout(usize);
 
@@ -19,18 +19,19 @@ impl Actor for IdlenessEffector {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("IdlenessEffector started");
+        log::info!("IdlenessEffector started");
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
-        info!("IdlenessEffector stopped");
+        log::info!("IdlenessEffector stopped");
     }
 }
 
 impl Handler<SetTimeout> for IdlenessEffector {
     type Result = Result<()>;
 
-    fn handle(&mut self, _msg: SetTimeout, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: SetTimeout, _ctx: &mut Context<Self>) -> Self::Result {
+        log::debug!("Setting timeout to {:?}", msg.0);
         Ok(())
     }
 }
