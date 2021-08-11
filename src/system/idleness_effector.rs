@@ -1,6 +1,6 @@
+use super::messages::*;
 use actix::prelude::*;
 use anyhow::Result;
-use super::messages::*;
 use log::info;
 
 #[derive(Message)]
@@ -11,18 +11,18 @@ pub struct IdlenessEffector;
 
 impl IdlenessEffector {
     pub fn new() -> Self {
-        IdlenessEffector{}
+        IdlenessEffector {}
     }
 }
 
 impl Actor for IdlenessEffector {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) { 
+    fn started(&mut self, ctx: &mut Self::Context) {
         info!("IdlenessEffector started");
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) { 
+    fn stopped(&mut self, ctx: &mut Self::Context) {
         info!("IdlenessEffector stopped");
     }
 }

@@ -9,29 +9,27 @@ use log::info;
 #[rtype(result = "()")]
 pub enum IdlenessState {
     Idle,
-    Active
+    Active,
 }
 
 pub struct IdlenessSensor {
-    subscriber: Option<Recipient<IdlenessState>>
+    subscriber: Option<Recipient<IdlenessState>>,
 }
 
 impl IdlenessSensor {
     pub fn new() -> Self {
-        IdlenessSensor{
-            subscriber: None
-        }
+        IdlenessSensor { subscriber: None }
     }
 }
 
 impl Actor for IdlenessSensor {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) { 
+    fn started(&mut self, ctx: &mut Self::Context) {
         info!("IdlenessSensor started");
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) { 
+    fn stopped(&mut self, ctx: &mut Self::Context) {
         info!("IdlenessSensor stopped");
     }
 }

@@ -1,6 +1,6 @@
+use super::messages::*;
 use actix::prelude::*;
 use anyhow::Result;
-use super::messages::*;
 use log::info;
 
 pub struct LogindEffector;
@@ -8,11 +8,11 @@ pub struct LogindEffector;
 impl Actor for LogindEffector {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) { 
+    fn started(&mut self, ctx: &mut Self::Context) {
         info!("LogindEffector started");
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) { 
+    fn stopped(&mut self, ctx: &mut Self::Context) {
         info!("LogindEffector stopped");
     }
 }

@@ -9,15 +9,14 @@ pub struct GetInhibitions;
 
 pub struct InhibitionSensor;
 
-
 impl Actor for InhibitionSensor {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) { 
+    fn started(&mut self, ctx: &mut Self::Context) {
         info!("InhibitionSensor started");
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) { 
+    fn stopped(&mut self, ctx: &mut Self::Context) {
         info!("InhibitionSensor stopped");
     }
 }
