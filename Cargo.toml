@@ -15,5 +15,4 @@ log = "0.4"
 x11rb = { version = "0.8.1", features = ["screensaver"] }
 zbus = "1.8.0"
 zvariant = "2.5.0"
-actix = "0.12"
-actix-rt = "2.2.0"
+tokio = { version = "1", features = ["full"] }
