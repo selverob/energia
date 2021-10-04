@@ -1,22 +1,24 @@
-use actix::prelude::*;
-use log::info;
+use log;
+use crate::armaf::ActorPort;
 
 pub struct Inhibition;
 
-#[derive(Message, PartialEq, Eq)]
-#[rtype(result = "Vec<Inhibition>")]
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub struct GetInhibitions;
 
-pub struct InhibitionSensor;
-
-impl Actor for InhibitionSensor {
-    type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        info!("InhibitionSensor started");
-    }
-
-    fn stopped(&mut self, ctx: &mut Self::Context) {
-        info!("InhibitionSensor stopped");
-    }
+pub fn spawn() -> ActorPort<GetInhibitions, Vec<Inhibition>, ()> {
+    let (port, mut rx) = ActorPort::make();
+    tokio::spawn(async move {
+        log::info!("Inhibition sensor started");
+        while let option_req = rx.recv().await {
+            match option_req {
+                Some(req) => {
+                    log::info!("Inhibition sensor got message");
+                    req.respond(Ok(vec![Inhibition]));
+                }
+                None => log::debug!("Spurious wakeup")
+            }
+        }
+    });
+    port
 }
