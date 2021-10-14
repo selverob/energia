@@ -1,13 +1,13 @@
 use std::time::Duration;
 use super::test_sensor::Increment;
 
-use tokio::{select, sync::mpsc, time};
+use tokio::{select, time};
 use crate::armaf::{self, ActorPort};
 use log::info;
 
 
 pub fn spawn(period: Duration, sensor: armaf::ActorPort<Increment, usize, ()>) -> armaf::ActorPort<(), (), ()> {
-    let (tx, mut rx) = mpsc::channel::<armaf::Request<(), (), ()>>(8);
+    let (port, mut rx) = ActorPort::make();
     tokio::spawn(async move {
         let interval = time::interval(period);
         tokio::pin!(interval);
@@ -28,5 +28,5 @@ pub fn spawn(period: Duration, sensor: armaf::ActorPort<Increment, usize, ()>) -
             }
         }
     });
-    ActorPort::new(tx)
+    port
 }

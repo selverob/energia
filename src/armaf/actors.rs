@@ -1,7 +1,3 @@
-use core::fmt;
-// use std::sync::Arc;
-// use std::{future::Future};
-use std::error::Error;
 use std::result::Result;
 
 use tokio::sync::mpsc::error::SendError;
@@ -10,8 +6,8 @@ use tokio::sync::{mpsc, oneshot};
 type ResponseReceiver<R, E> = oneshot::Receiver<Result<R, E>>;
 
 pub struct Request<P, R, E> {
-    payload: P,
-    response_sender: oneshot::Sender<Result<R, E>>,
+    pub payload: P,
+    pub response_sender: oneshot::Sender<Result<R, E>>,
 }
 
 impl<P, R, E> Request<P, R, E> {
@@ -43,7 +39,12 @@ pub struct ActorPort<P, R, E> {
 
 impl<P, R, E> ActorPort<P, R, E> {
     pub fn new(message_sender: mpsc::Sender<Request<P, R, E>>) -> ActorPort<P, R, E> {
-        ActorPort{message_sender}
+        ActorPort { message_sender }
+    }
+
+    pub fn make() -> (ActorPort<P, R, E>, mpsc::Receiver<Request<P, R, E>>) {
+        let (tx, rx) = mpsc::channel::<Request<P, R, E>>(8);
+        (ActorPort::new(tx), rx)
     }
 
     pub async fn raw_request(
