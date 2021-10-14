@@ -1,20 +1,21 @@
 mod control;
-mod external;
+// mod external;
 mod system;
-use actix::prelude::*;
-use control::idleness_controller::IdlenessController;
-use std::env;
-use system::messages::Stop;
+mod armaf; 
 
-#[actix::main]
+use tokio;
+use std::env;
+use env_logger;
+use std::time::Duration;
+
+#[tokio::main]
 async fn main() {
     env::set_var("RUST_LOG", "debug");
     env_logger::init();
-    let addr = IdlenessController::new(vec![]).start();
-
-    let stop_response = addr.send(Stop).await;
-    println!("{:?}", stop_response);
-    //System::current().stop();
+    let sensor_port = armaf::test_sensor::spawn(Duration::from_secs(5));
+    let controller_port = armaf::test_controller::spawn(Duration::from_secs(10), sensor_port);
+    tokio::time::sleep(Duration::from_secs(30)).await;
+    controller_port.request(()).await;
 }
 
 // use anyhow::Result;
@@ -22,6 +23,7 @@ async fn main() {
 // use external::idleness::idleness_monitor::IdlenessMonitor;
 // use log::info;
 // use std::time::{Duration, Instant};
+// use std::env;
 // // use std::thread::sleep;
 // // use std::time::Duration;
 // // use zbus;

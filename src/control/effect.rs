@@ -1,19 +1,17 @@
-use crate::system::messages;
-use actix::Recipient;
 use std::time::Duration;
+use crate::{armaf, system::inhibition_sensor::Inhibition};
 
-#[derive(PartialEq, Eq, Clone, Copy, Hash, Debug)]
-pub enum Inhibition {
-    Idle,
-    Sleep,
-    Shutdown,
+#[derive(Clone, Debug)]
+pub enum RollbackStrategy {
+    ControllerInitiated(armaf::ActorPort<armaf::EffectorMessage, (), ()>),
+    UserInitiated,
 }
 
-#[derive(PartialEq, Eq, Clone, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub struct Effect {
-    effect_name: String,
-    effect_timeout: Duration, // The time which should pass from previous effect
-    inhibited_by: Vec<Inhibition>,
-    execute_recipient: Recipient<messages::Execute>,
-    rollback_recipient: Recipient<messages::Rollback>,
+    pub effect_name: String,
+    pub effect_timeout: Duration, // The time which should pass from previous effect
+    pub inhibited_by: Vec<Inhibition>,
+    pub execute_recipient: armaf::ActorPort<armaf::EffectorMessage, (), ()>,
+    pub rollback_recipient: RollbackStrategy,
 }
