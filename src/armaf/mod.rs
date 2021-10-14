@@ -4,4 +4,4 @@ pub mod actors;
 pub mod effector;
 
 pub use actors::*;
-pub use effector::EffectorMessage;
+pub use effector::{EffectorMessage, EffectorPort};

@@ -1,4 +1,4 @@
-// mod control;
+mod control;
 // mod external;
 mod system;
 mod armaf; 

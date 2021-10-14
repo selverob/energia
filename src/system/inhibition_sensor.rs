@@ -1,9 +1,10 @@
-use crate::armaf::ActorPort;
 use log;
+use crate::armaf::ActorPort;
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Inhibition;
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct GetInhibitions;
 
 pub fn spawn() -> ActorPort<GetInhibitions, Vec<Inhibition>, ()> {
@@ -16,7 +17,10 @@ pub fn spawn() -> ActorPort<GetInhibitions, Vec<Inhibition>, ()> {
                     log::info!("Inhibition sensor got message");
                     req.respond(Ok(vec![Inhibition]));
                 }
-                None => log::debug!("Spurious wakeup"),
+                None => {
+                    log::info!("Inhibition sensor stopping");
+                    return;
+                }
             }
         }
     });

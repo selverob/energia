@@ -2,10 +2,6 @@ use crate::armaf::ActorPort;
 use log;
 use tokio::sync::mpsc;
 
-// #[derive(Message)]
-// #[rtype(result = "()")]
-// pub struct SetSubscriber(Recipient<NewState>);
-
 #[derive(PartialEq, Eq, Debug, Hash)]
 pub enum IdlenessState {
     Idle,
@@ -24,7 +20,10 @@ pub fn spawn(subscriber: mpsc::Sender<IdlenessState>) -> ActorPort<(), (), ()> {
                     req.respond(Ok(()));
                     let _ = subscriber.send(IdlenessState::Active).await;
                 }
-                None => log::debug!("Spurious wakeup"),
+                None => {
+                    log::info!("Idleness sensor stopping");
+                    return;
+                }
             }
         }
     });

@@ -1,3 +1,9 @@
+# Screensaver events are received when locked too
+# So it should be enough to mark locking as non-rollbackable
+# User also needs to set screen dimming manually
+
+# We can mark events like sleep or lock as "user-rollbacked"
+# and make the idleness controller receive messages from them
 digraph G {
     init [label = "Setting 3m timeout"];
     wait1 [label = "Waiting for initial timeout"];
