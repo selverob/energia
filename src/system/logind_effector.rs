@@ -5,7 +5,8 @@ pub fn spawn() -> ActorPort<EffectorMessage, (), ()> {
     let (port, mut rx) = ActorPort::make();
     tokio::spawn(async move {
         log::info!("Logind effector started");
-        while let option_req = rx.recv().await {
+        loop {
+            let option_req = rx.recv().await;
             if option_req.is_none() {
                 log::debug!("Spurious wakeup");
                 continue;

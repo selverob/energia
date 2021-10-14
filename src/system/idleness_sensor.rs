@@ -1,6 +1,6 @@
+use crate::armaf::ActorPort;
 use log;
 use tokio::sync::mpsc;
-use crate::armaf::ActorPort;
 
 // #[derive(Message)]
 // #[rtype(result = "()")]
@@ -17,14 +17,14 @@ pub fn spawn(subscriber: mpsc::Sender<IdlenessState>) -> ActorPort<(), (), ()> {
     let (port, mut rx) = ActorPort::make();
     tokio::spawn(async move {
         log::info!("Idleness sensor started");
-        while let option_req = rx.recv().await {
-            match option_req {
+        loop {
+            match rx.recv().await {
                 Some(req) => {
                     log::info!("Idleness sensor got message");
                     req.respond(Ok(()));
-                    subscriber.send(IdlenessState::Active);
+                    let _ = subscriber.send(IdlenessState::Active).await;
                 }
-                None => log::debug!("Spurious wakeup")
+                None => log::debug!("Spurious wakeup"),
             }
         }
     });

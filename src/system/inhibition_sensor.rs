@@ -1,5 +1,5 @@
-use log;
 use crate::armaf::ActorPort;
+use log;
 
 pub struct Inhibition;
 
@@ -10,13 +10,13 @@ pub fn spawn() -> ActorPort<GetInhibitions, Vec<Inhibition>, ()> {
     let (port, mut rx) = ActorPort::make();
     tokio::spawn(async move {
         log::info!("Inhibition sensor started");
-        while let option_req = rx.recv().await {
-            match option_req {
+        loop {
+            match rx.recv().await {
                 Some(req) => {
                     log::info!("Inhibition sensor got message");
                     req.respond(Ok(vec![Inhibition]));
                 }
-                None => log::debug!("Spurious wakeup")
+                None => log::debug!("Spurious wakeup"),
             }
         }
     });
