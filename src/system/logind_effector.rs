@@ -4,11 +4,11 @@ use log::info;
 pub fn spawn() -> EffectorPort {
     let (port, mut rx) = ActorPort::make();
     tokio::spawn(async move {
-        log::info!("Logind effector started");
+        log::info!("Started");
         loop {
             let option_req = rx.recv().await;
             if option_req.is_none() {
-                log::info!("LoginEffector stopping");
+                log::info!("Stopping");
                 return;
             }
             let req = option_req.unwrap();
