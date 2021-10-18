@@ -1,5 +1,5 @@
 use super::effect::Effect;
-use crate::armaf::{ActorPort, EffectorPort, EffectorMessage, Request};
+use crate::armaf::{ActorPort, EffectorMessage, EffectorPort, Request};
 use crate::system::{
     idleness_effector::{self, SetTimeout},
     idleness_sensor::{self, IdlenessState},
@@ -20,11 +20,12 @@ pub struct Stop;
 pub struct IdlenessController {
     effects: Vec<Effect>,
     idleness_rx: mpsc::Receiver<IdlenessState>,
-    
+
     idleness_effector: ActorPort<SetTimeout, (), ()>,
     inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibition>, ()>,
     effect_queue: VecDeque<Effect>,
     rollback_stack: Vec<EffectorPort>,
+    idleness_control_channel: ActorPort<(), (), ()>, // TODO: Remove once not needed, stored only to prevent channel lifetime dependent actor stop
     stop_receiver: mpsc::Receiver<Request<Stop, (), ()>>,
 }
 
@@ -33,17 +34,18 @@ pub fn spawn(effects: Vec<Effect>) -> ActorPort<Stop, (), ()> {
     let (idleness_tx, idleness_rx) = mpsc::channel(8);
     let idleness_effector = idleness_effector::spawn();
     let inhibition_sensor = inhibition_sensor::spawn();
-    idleness_sensor::spawn(idleness_tx);
-    
+    let idleness_control_channel = idleness_sensor::spawn(idleness_tx);
+
     let (port, rx) = ActorPort::make();
     let mut controller = IdlenessController {
         effects,
         idleness_rx,
         idleness_effector,
         inhibition_sensor,
+        idleness_control_channel,
         effect_queue: VecDeque::new(),
         rollback_stack: vec![],
-        stop_receiver: rx
+        stop_receiver: rx,
     };
 
     tokio::spawn(async move {
@@ -68,6 +70,7 @@ impl IdlenessController {
                 }
                 _ = self.stop_receiver.recv() => {
                     log::info!("IdlenessController stopping");
+                    return;
                 }
             }
         }
@@ -80,6 +83,8 @@ impl IdlenessController {
         }
         self.reinitialize_effect_queue();
         let timeout_in_seconds = self.effects[0].effect_timeout.as_secs();
-        self.idleness_effector.request(idleness_effector::SetTimeout(timeout_in_seconds)).await;
+        self.idleness_effector
+            .request(idleness_effector::SetTimeout(timeout_in_seconds))
+            .await;
     }
 }

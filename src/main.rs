@@ -12,10 +12,9 @@ use std::time::Duration;
 async fn main() {
     env::set_var("RUST_LOG", "debug");
     env_logger::init();
-    let sensor_port = armaf::test_sensor::spawn(Duration::from_secs(5));
-    let controller_port = armaf::test_controller::spawn(Duration::from_secs(10), sensor_port);
+    let idleness_controller = control::idleness_controller::spawn(vec![]);
     tokio::time::sleep(Duration::from_secs(30)).await;
-    controller_port.request(()).await;
+    idleness_controller.request(control::idleness_controller::Stop).await;
 }
 
 // use anyhow::Result;
