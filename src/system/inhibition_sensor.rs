@@ -10,15 +10,15 @@ pub struct GetInhibitions;
 pub fn spawn() -> ActorPort<GetInhibitions, Vec<Inhibition>, ()> {
     let (port, mut rx) = ActorPort::make();
     tokio::spawn(async move {
-        log::info!("Inhibition sensor started");
+        log::info!("Started");
         loop {
             match rx.recv().await {
                 Some(req) => {
-                    log::info!("Inhibition sensor got message");
+                    log::info!("Got message");
                     req.respond(Ok(vec![Inhibition]));
                 }
                 None => {
-                    log::info!("Inhibition sensor stopping");
+                    log::info!("Stopping");
                     return;
                 }
             }

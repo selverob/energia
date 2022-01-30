@@ -12,7 +12,7 @@ pub enum IdlenessState {
 pub fn spawn(subscriber: mpsc::Sender<IdlenessState>) -> ActorPort<(), (), ()> {
     let (port, mut rx) = ActorPort::make();
     tokio::spawn(async move {
-        log::info!("Idleness sensor started");
+        log::info!("Started");
         loop {
             match rx.recv().await {
                 Some(req) => {
@@ -21,7 +21,7 @@ pub fn spawn(subscriber: mpsc::Sender<IdlenessState>) -> ActorPort<(), (), ()> {
                     let _ = subscriber.send(IdlenessState::Active).await;
                 }
                 None => {
-                    log::info!("Idleness sensor stopping");
+                    log::info!("Stopping");
                     return;
                 }
             }
