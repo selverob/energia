@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossbeam_channel::Receiver;
+use tokio::sync::watch::Receiver;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemState {

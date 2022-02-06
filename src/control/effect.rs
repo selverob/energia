@@ -1,5 +1,5 @@
-use std::time::Duration;
 use crate::{armaf, system::inhibition_sensor::Inhibition};
+use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub enum RollbackStrategy {

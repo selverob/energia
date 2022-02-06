@@ -3,7 +3,7 @@ use super::ActorPort;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectorMessage {
     Execute,
-    Rollback
+    Rollback,
 }
 
 pub type EffectorPort = ActorPort<EffectorMessage, (), ()>;
