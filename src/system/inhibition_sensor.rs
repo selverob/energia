@@ -1,5 +1,5 @@
-use log;
 use crate::armaf::ActorPort;
+use log;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Inhibition;

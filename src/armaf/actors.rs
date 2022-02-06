@@ -9,8 +9,8 @@ use tokio::sync::{mpsc, oneshot};
 /// results of an operation invoked by a [Request].
 type ResponseReceiver<R, E> = oneshot::Receiver<Result<R, E>>;
 
-/// A request sent to an actor. 
-/// 
+/// A request sent to an actor.
+///
 /// A Request contains a generic payload which has to match the payload accepted
 /// by the [ActorPort] and a [oneshot] channel on which the result of the
 /// operation or an error will be returned.

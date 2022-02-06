@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use tokio::{time};
 use crate::armaf::{self, ActorPort};
+use tokio::time;
 
 pub struct Increment;
 
