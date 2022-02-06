@@ -49,7 +49,8 @@ impl X11IdlenessMonitor {
         let screensaver_atom = Self::install_screensaver(&receiver_connection, &screen)?;
         let control_window_id = Self::install_control_window(&receiver_connection, &screen)?;
         log::debug!("Screensaver installed");
-        let event_receiver = Self::start_event_receiver(receiver_connection, screen, control_window_id)?;
+        let event_receiver =
+            Self::start_event_receiver(receiver_connection, screen, control_window_id)?;
         Ok(X11IdlenessMonitor {
             event_receiver,
             command_connection,
