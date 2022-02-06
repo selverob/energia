@@ -1,12 +1,16 @@
-mod control;
-// mod external;
-mod system;
-mod armaf; 
+#![warn(missing_docs)]
 
-use tokio;
-use std::env;
+//! A modern power manager for Linux
+
+mod armaf;
+mod control;
+mod external;
+mod system;
+
 use env_logger;
+use std::env;
 use std::time::Duration;
+use tokio;
 
 #[tokio::main]
 async fn main() {
@@ -14,15 +18,16 @@ async fn main() {
     env_logger::init();
     let idleness_controller = control::idleness_controller::spawn(vec![]);
     tokio::time::sleep(Duration::from_secs(30)).await;
-    idleness_controller.request(control::idleness_controller::Stop).await;
+    idleness_controller
+        .request(control::idleness_controller::Stop)
+        .await;
 }
 
 // use anyhow::Result;
 // use external::idleness;
 // use external::idleness::idleness_monitor::IdlenessMonitor;
 // use log::info;
-// use std::time::{Duration, Instant};
-// use std::env;
+// use std::time::Instant;
 // // use std::thread::sleep;
 // // use std::time::Duration;
 // // use zbus;
@@ -35,11 +40,10 @@ async fn main() {
 //     monitor.set_idleness_timeout(15)?;
 //     info!("Idleness timeout set");
 //     let receiver = monitor.get_idleness_channel();
-//     loop {
-//         let result = receiver.recv_deadline(Instant::now() + Duration::from_secs(20));
-//         match result {
-//             Ok(state) => info!("Got screensaver event, system is {:?}", state),
-//             Err(_) => break,
+//     for _ in 0..2 {
+//         let result = receiver.blocking_recv();
+//         if let Some(status) = result {
+//             info!("Got screensaver event, system is {:?}", status);
 //         };
 //     }
 //     monitor.set_idleness_timeout(-1)
