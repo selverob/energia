@@ -97,9 +97,9 @@ fn install_screensaver(connection: &RustConnection, screen: &Screen) -> Result<(
         .check()
         .context("Couldn't create pixmap for screensaver")?;
     let atom = screensaver_atom_cookie?.reply()?.atom;
-    set_attributes_cookie?
-        .check()
-        .context("Couldn't set screensaver attributes. Is another screensaver already installed?")?;
+    set_attributes_cookie?.check().context(
+        "Couldn't set screensaver attributes. Is another screensaver already installed?",
+    )?;
     connection
         .change_property(
             PropMode::REPLACE,
