@@ -1,5 +1,5 @@
 use anyhow::Result;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::watch::Receiver;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemState {
@@ -8,6 +8,6 @@ pub enum SystemState {
 }
 
 pub trait IdlenessMonitor {
-    fn get_idleness_channel(&mut self) -> &mut Receiver<SystemState>;
+    fn get_idleness_channel(&self) -> Receiver<SystemState>;
     fn set_idleness_timeout(&mut self, timeout_in_seconds: i16) -> Result<()>;
 }
