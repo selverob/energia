@@ -49,7 +49,7 @@ impl X11IdlenessMonitor {
         let screensaver_atom = Self::install_screensaver(&receiver_connection, &screen)?;
         let control_window_id = Self::install_control_window(&receiver_connection, &screen)?;
         log::debug!("Screensaver installed");
-        let event_receiver = start_event_receiver(receiver_connection, screen, control_window_id)?;
+        let event_receiver = Self::start_event_receiver(receiver_connection, screen, control_window_id)?;
         Ok(X11IdlenessMonitor {
             event_receiver,
             command_connection,
@@ -146,6 +146,40 @@ impl X11IdlenessMonitor {
             .check()
             .context("Couldn't delete screensaver property")
     }
+
+    fn start_event_receiver(
+        connection: RustConnection,
+        screen: Screen,
+        control_window_id: u32,
+    ) -> Result<watch::Receiver<SystemState>> {
+        connection
+            .screensaver_select_input(screen.root, screensaver::Event::NOTIFY_MASK)?
+            .check()
+            .context("Couldn't set event mask for screensaver events")?;
+        let (tx, rx) = watch::channel(SystemState::Awakened);
+        std::thread::spawn(move || loop {
+            let event_result = connection.wait_for_event();
+            debug!("Received idleness event from X11");
+            match event_result {
+                Err(err) => {
+                    error!("Error received when waiting for idleness event: {:?}", err);
+                    continue;
+                }
+                Ok(Event::ScreensaverNotify(event)) => tx
+                    .send(event.state.into())
+                    .unwrap_or_else(|err| error!("Couldn't notify about idleness event: {}", err)),
+                Ok(Event::DestroyNotify(event)) => {
+                    if event.window != control_window_id {
+                        log::debug!("Spurious window destruction caught");
+                    }
+                    log::info!("X11 idleness control window destroyed, stopping watcher");
+                    return;
+                }
+                _ => error!("Unknown event received from X11"),
+            }
+        });
+        Ok(rx)
+    }
 }
 
 impl IdlenessMonitor for X11IdlenessMonitor {
@@ -168,38 +202,4 @@ impl Drop for X11IdlenessMonitor {
             log::error!("Couldn't terminate X11 watcher {}", e);
         }
     }
-}
-
-fn start_event_receiver(
-    connection: RustConnection,
-    screen: Screen,
-    control_window_id: u32,
-) -> Result<watch::Receiver<SystemState>> {
-    connection
-        .screensaver_select_input(screen.root, screensaver::Event::NOTIFY_MASK)?
-        .check()
-        .context("Couldn't set event mask for screensaver events")?;
-    let (tx, rx) = watch::channel(SystemState::Awakened);
-    std::thread::spawn(move || loop {
-        let event_result = connection.wait_for_event();
-        debug!("Received idleness event from X11");
-        match event_result {
-            Err(err) => {
-                error!("Error received when waiting for idleness event: {:?}", err);
-                continue;
-            }
-            Ok(Event::ScreensaverNotify(event)) => tx
-                .send(event.state.into())
-                .unwrap_or_else(|err| error!("Couldn't notify about idleness event: {}", err)),
-            Ok(Event::DestroyNotify(event)) => {
-                if event.window != control_window_id {
-                    log::debug!("Spurious window destruction caught");
-                }
-                log::info!("X11 idleness control window destroyed, stopping watcher");
-                return;
-            }
-            _ => error!("Unknown event received from X11"),
-        }
-    });
-    Ok(rx)
 }
