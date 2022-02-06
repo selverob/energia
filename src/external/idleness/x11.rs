@@ -24,6 +24,7 @@ impl Into<SystemState> for State {
     }
 }
 
+#[derive(Debug)]
 pub struct X11IdlenessMonitor {
     event_receiver: watch::Receiver<SystemState>,
     command_connection: RustConnection,
@@ -122,7 +123,7 @@ impl X11IdlenessMonitor {
         Ok(window_id)
     }
 
-    fn terminate_watcher(&self) -> Result<()> {
+    pub fn terminate_watcher(&self) -> Result<()> {
         log::info!("Terminating idleness watcher");
         self.command_connection
             .destroy_window(self.control_window_id)?
@@ -131,7 +132,7 @@ impl X11IdlenessMonitor {
         Ok(())
     }
 
-    fn uninstall_screensaver(&self) -> Result<()> {
+    pub fn uninstall_screensaver(&self) -> Result<()> {
         log::info!("Uninstalling screensaver");
         let screen = &self.command_connection.setup().roots[self.screen_num];
         let unset_cookie = self

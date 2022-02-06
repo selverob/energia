@@ -10,7 +10,7 @@ edition = "2018"
 anyhow = "1.0"
 env_logger = "0.8.3"
 log = "0.4"
-x11rb = { version = "0.8.1", features = ["screensaver"] }
+x11rb = { version = "0.8.1", features = ["screensaver", "xtest"] }
 zbus = "1.8.0"
 zvariant = "2.5.0"
 tokio = { version = "1", features = ["full"] }
