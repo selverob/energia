@@ -13,15 +13,15 @@ jobs:
         with:
           command: fmt
           args: -- --check
-  build:
-    name: Build the pushed version
+  test:
+    name: Run the tests
     runs-on: ubuntu-latest
     steps:
+      - run: "sudo apt-get update -y && sudo apt-get install -y xvfb"
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
       - uses: actions-rs/cargo@v1
         with:
-          command: build
-          args: --release
+          command: test
