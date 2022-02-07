@@ -1,4 +1,5 @@
-use super::idleness_monitor::{IdlenessMonitor, SystemState};
+use super::interface::{DisplayServerInterface, SystemState};
+use super::IdlenessSetter;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use tokio::sync::watch;
@@ -25,7 +26,7 @@ impl Into<SystemState> for State {
 }
 
 #[derive(Debug)]
-pub struct X11IdlenessMonitor {
+pub struct X11Interface {
     event_receiver: watch::Receiver<SystemState>,
     command_connection: RustConnection,
     /// Stores the ID of the window on which events to stop monitoring thread can be sent
@@ -35,8 +36,8 @@ pub struct X11IdlenessMonitor {
     screen_num: usize,
 }
 
-impl X11IdlenessMonitor {
-    pub fn new(display_name: Option<&str>) -> Result<X11IdlenessMonitor> {
+impl X11Interface {
+    pub fn new(display_name: Option<&str>) -> Result<X11Interface> {
         let command_connection = RustConnection::connect(display_name)?.0;
         if command_connection
             .extension_information(screensaver::X11_EXTENSION_NAME)?
@@ -51,7 +52,7 @@ impl X11IdlenessMonitor {
         log::debug!("Screensaver installed");
         let event_receiver =
             Self::start_event_receiver(receiver_connection, screen, control_window_id)?;
-        Ok(X11IdlenessMonitor {
+        Ok(X11Interface {
             event_receiver,
             command_connection,
             control_window_id,
@@ -183,24 +184,38 @@ impl X11IdlenessMonitor {
     }
 }
 
-impl IdlenessMonitor for X11IdlenessMonitor {
+impl<'a> DisplayServerInterface<'a> for X11Interface {
+    type Setter = X11IdlenessSetter<'a>;
+
     fn get_idleness_channel(&self) -> watch::Receiver<SystemState> {
         self.event_receiver.clone()
     }
 
-    fn set_idleness_timeout(&mut self, timeout: i16) -> Result<()> {
-        debug!("Setting X11 idleness timeout to {}", timeout);
-        Ok(self
-            .command_connection
-            .set_screen_saver(timeout, 0, Blanking::NOT_PREFERRED, Exposures::DEFAULT)?
-            .check()?)
+    fn get_idleness_setter(&'a self) -> Self::Setter {
+        X11IdlenessSetter {
+            connection: &self.command_connection,
+        }
     }
 }
 
-impl Drop for X11IdlenessMonitor {
+impl Drop for X11Interface {
     fn drop(&mut self) {
         if let Err(e) = self.terminate_watcher() {
             log::error!("Couldn't terminate X11 watcher {}", e);
         }
+    }
+}
+
+pub struct X11IdlenessSetter<'a> {
+    connection: &'a RustConnection,
+}
+
+impl<'a> IdlenessSetter<'a> for X11IdlenessSetter<'a> {
+    fn set_idleness_timeout(&self, timeout: i16) -> Result<()> {
+        debug!("Setting X11 idleness timeout to {}", timeout);
+        Ok(self
+            .connection
+            .set_screen_saver(timeout, 0, Blanking::NOT_PREFERRED, Exposures::DEFAULT)?
+            .check()?)
     }
 }

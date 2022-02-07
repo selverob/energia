@@ -1,4 +1,6 @@
-use super::idleness_monitor::{IdlenessMonitor, SystemState};
+use crate::external::idleness::IdlenessSetter;
+
+use super::interface::{DisplayServerInterface, SystemState};
 use super::x11;
 use std::io;
 use std::process::{Child, Command};
@@ -45,7 +47,7 @@ fn test_xvfb_init() -> io::Result<()> {
 #[test]
 fn test_error_without_extension() {
     let (addr, mut child) = initialize_xvfb(false).expect("Xvfb couldn't be started");
-    let monitor = x11::X11IdlenessMonitor::new(Some(&addr));
+    let monitor = x11::X11Interface::new(Some(&addr));
     assert!(monitor.is_err());
     assert!(monitor
         .unwrap_err()
@@ -57,8 +59,7 @@ fn test_error_without_extension() {
 #[test]
 fn test_termination() {
     let (addr, mut child) = initialize_xvfb(true).expect("Xvfb couldn't be started");
-    let monitor =
-        x11::X11IdlenessMonitor::new(Some(&addr)).expect("Failed to create Idleness Monitor");
+    let monitor = x11::X11Interface::new(Some(&addr)).expect("Failed to create Idleness Monitor");
     monitor
         .terminate_watcher()
         .expect("Error when terminating watcher");
@@ -75,8 +76,9 @@ fn test_basic_flow() {
     let (connection, screen_num) = connect_to_xvfb(Some(&addr));
     let root = connection.setup().roots[screen_num].root;
     let mut monitor =
-        x11::X11IdlenessMonitor::new(Some(&addr)).expect("Failed to create Idleness Monitor");
-    monitor
+        x11::X11Interface::new(Some(&addr)).expect("Failed to create Idleness Monitor");
+    let setter = monitor.get_idleness_setter();
+    setter
         .set_idleness_timeout(2)
         .expect("Failed to set Idleness timeout");
     let mut receiver = monitor.get_idleness_channel();
@@ -92,7 +94,7 @@ fn test_basic_flow() {
     sleep(Duration::from_secs(2));
     assert!(receiver.has_changed().expect("Failure in receive channel"));
     assert_eq!(*receiver.borrow_and_update(), SystemState::Awakened);
-    monitor
+    setter
         .set_idleness_timeout(-1)
         .expect("Failed to reset screensaver timeout");
     drop(connection);
