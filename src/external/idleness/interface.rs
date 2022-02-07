@@ -16,17 +16,17 @@ pub enum SystemState {
 /// The interface between Energia and the user's display server for the purposes
 /// of detecting and controlling system's idleness behavior.
 pub trait DisplayServerInterface {
-    type Setter: IdlenessSetter;
+    type Controller: IdlenessController;
 
     /// Get a [Receiver] on which notification about system idleness state changes can be received.
     fn get_idleness_channel(&self) -> Receiver<SystemState>;
 
     /// Get a structure which will allow controlling the system's idleness behavior.
-    fn get_idleness_setter(&self) -> Self::Setter;
+    fn get_idleness_controller(&self) -> Self::Controller;
 }
 
 /// Control for the system's idleness behavior
-pub trait IdlenessSetter: 'static + Send + Sync + Clone {
+pub trait IdlenessController: 'static + Send + Sync + Clone {
     /// Set the time of user's inactivity after which the display server should
     /// notify about user's idleness
     fn set_idleness_timeout(&self, timeout_in_seconds: i16) -> Result<()>;

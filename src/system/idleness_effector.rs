@@ -1,9 +1,11 @@
 use crate::armaf::{ActorPort, EffectorMessage};
-use crate::external::idleness::IdlenessSetter;
+use crate::external::idleness::IdlenessController;
 use anyhow::Result;
 use log;
 
-pub fn spawn<S: IdlenessSetter>(setter: S) -> ActorPort<EffectorMessage<i16>, (), anyhow::Error> {
+pub fn spawn<S: IdlenessController>(
+    setter: S,
+) -> ActorPort<EffectorMessage<i16>, (), anyhow::Error> {
     let (port, mut rx) = ActorPort::<EffectorMessage<i16>, (), anyhow::Error>::make();
     tokio::spawn(async move {
         log::info!("Starting");
@@ -36,12 +38,12 @@ pub fn spawn<S: IdlenessSetter>(setter: S) -> ActorPort<EffectorMessage<i16>, ()
     port
 }
 
-async fn get_current_timeout<S: IdlenessSetter>(setter: &S) -> Result<i16> {
+async fn get_current_timeout<S: IdlenessController>(setter: &S) -> Result<i16> {
     let sent_setter = setter.clone();
     tokio::task::spawn_blocking(move || sent_setter.get_idleness_timeout()).await?
 }
 
-async fn set_timeout<S: IdlenessSetter>(timeout: i16, setter: &S) -> Result<()> {
+async fn set_timeout<S: IdlenessController>(timeout: i16, setter: &S) -> Result<()> {
     let sent_setter = setter.clone();
     tokio::task::spawn_blocking(move || sent_setter.set_idleness_timeout(timeout)).await?
 }

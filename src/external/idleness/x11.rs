@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::interface::{DisplayServerInterface, SystemState};
-use super::IdlenessSetter;
+use super::IdlenessController;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use tokio::sync::watch;
@@ -187,14 +187,14 @@ impl X11Interface {
 }
 
 impl DisplayServerInterface for X11Interface {
-    type Setter = X11IdlenessSetter;
+    type Controller = X11IdlenessController;
 
     fn get_idleness_channel(&self) -> watch::Receiver<SystemState> {
         self.event_receiver.clone()
     }
 
-    fn get_idleness_setter(&self) -> Self::Setter {
-        X11IdlenessSetter {
+    fn get_idleness_controller(&self) -> Self::Controller {
+        X11IdlenessController {
             connection: self.command_connection.clone(),
         }
     }
@@ -209,11 +209,11 @@ impl Drop for X11Interface {
 }
 
 #[derive(Debug, Clone)]
-pub struct X11IdlenessSetter {
+pub struct X11IdlenessController {
     connection: Arc<RustConnection>,
 }
 
-impl IdlenessSetter for X11IdlenessSetter {
+impl IdlenessController for X11IdlenessController {
     fn set_idleness_timeout(&self, timeout: i16) -> Result<()> {
         debug!("Setting X11 idleness timeout to {}", timeout);
         Ok(self

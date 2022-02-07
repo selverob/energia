@@ -1,22 +1,22 @@
-use crate::external::idleness::{mock, DisplayServerInterface, IdlenessSetter, SystemState};
+use crate::external::idleness::{mock, DisplayServerInterface, IdlenessController, SystemState};
 
 #[test]
 fn test_setting_and_getting_timeout() {
     let interface = mock::Interface::new(10);
 
-    let setter = interface.get_idleness_setter();
+    let controller = interface.get_idleness_controller();
     assert_eq!(
-        setter
+        controller
             .get_idleness_timeout()
             .expect("Failing even when failure mode is false"),
         10
     );
 
-    setter
+    controller
         .set_idleness_timeout(2)
         .expect("Failing even when failure mode is false");
     assert_eq!(
-        setter
+        controller
             .get_idleness_timeout()
             .expect("Failing even when failure mode is false"),
         2
@@ -26,12 +26,12 @@ fn test_setting_and_getting_timeout() {
 #[test]
 fn test_failure_mode() {
     let interface = mock::Interface::new(10);
-    let setter = interface.get_idleness_setter();
+    let controller = interface.get_idleness_controller();
     interface.set_failure_mode(true);
-    setter
+    controller
         .get_idleness_timeout()
         .expect_err("No failure even when failure mode is true");
-    setter
+    controller
         .set_idleness_timeout(10)
         .expect_err("No failure even when failure mode is true");
 }

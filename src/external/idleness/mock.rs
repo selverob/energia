@@ -1,4 +1,4 @@
-use super::{DisplayServerInterface, IdlenessSetter, SystemState};
+use super::{DisplayServerInterface, IdlenessController, SystemState};
 use anyhow::Result;
 use std::io::{Error, ErrorKind};
 use std::{
@@ -36,14 +36,14 @@ impl Interface {
 }
 
 impl DisplayServerInterface for Interface {
-    type Setter = Setter;
+    type Controller = Controller;
 
     fn get_idleness_channel(&self) -> watch::Receiver<SystemState> {
         self.receiver.clone()
     }
 
-    fn get_idleness_setter(&self) -> Self::Setter {
-        Setter {
+    fn get_idleness_controller(&self) -> Self::Controller {
+        Controller {
             timeout: self.timeout.clone(),
             should_fail: self.should_fail.clone(),
         }
@@ -51,12 +51,12 @@ impl DisplayServerInterface for Interface {
 }
 
 #[derive(Debug, Clone)]
-pub struct Setter {
+pub struct Controller {
     timeout: Arc<Mutex<Cell<i16>>>,
     should_fail: Arc<Mutex<Cell<bool>>>,
 }
 
-impl IdlenessSetter for Setter {
+impl IdlenessController for Controller {
     fn set_idleness_timeout(&self, timeout_in_seconds: i16) -> Result<()> {
         if self.should_fail.lock().unwrap().get() {
             Err(anyhow::Error::new(Error::new(
