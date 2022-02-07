@@ -206,6 +206,7 @@ impl Drop for X11Interface {
     }
 }
 
+#[derive(Debug)]
 pub struct X11IdlenessSetter<'a> {
     connection: &'a RustConnection,
 }
@@ -217,5 +218,10 @@ impl<'a> IdlenessSetter<'a> for X11IdlenessSetter<'a> {
             .connection
             .set_screen_saver(timeout, 0, Blanking::NOT_PREFERRED, Exposures::DEFAULT)?
             .check()?)
+    }
+
+    fn get_idleness_timeout(&self) -> Result<i16> {
+        debug!("Fetching X11 idleness timeout");
+        Ok(self.connection.get_screen_saver()?.reply()?.timeout as i16)
     }
 }

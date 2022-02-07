@@ -71,6 +71,36 @@ fn test_termination() {
 }
 
 #[test]
+fn test_setting_and_getting_timeout() {
+    let (addr, mut child) = initialize_xvfb(true).expect("Xvfb couldn't be started");
+    let monitor = x11::X11Interface::new(Some(&addr)).expect("Failed to create Idleness Monitor");
+    let setter = monitor.get_idleness_setter();
+    let default = setter
+        .get_idleness_timeout()
+        .expect("Couldn't get idleness timeout");
+    setter
+        .set_idleness_timeout(2)
+        .expect("Couldn't set idleness timeout");
+    assert_eq!(
+        setter
+            .get_idleness_timeout()
+            .expect("Couldn't get idleness timeout"),
+        2
+    );
+    setter
+        .set_idleness_timeout(-1)
+        .expect("Couldn't set idleness timeout");
+    assert_eq!(
+        setter
+            .get_idleness_timeout()
+            .expect("Couldn't get idleness timeout"),
+        default
+    );
+    drop(monitor);
+    child.wait().expect("Xvfb didn't even start");
+}
+
+#[test]
 fn test_basic_flow() {
     let (addr, mut child) = initialize_xvfb(true).expect("Xvfb couldn't be started");
     let (connection, screen_num) = connect_to_xvfb(Some(&addr));

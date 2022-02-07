@@ -30,4 +30,7 @@ pub trait IdlenessSetter<'a> {
     /// Set the time of user's inactivity after which the display server should
     /// notify about user's idleness
     fn set_idleness_timeout(&self, timeout_in_seconds: i16) -> Result<()>;
+
+    /// Get the time of inactivity after which the system is considered idle
+    fn get_idleness_timeout(&self) -> Result<i16>;
 }
