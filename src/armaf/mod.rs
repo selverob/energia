@@ -4,11 +4,11 @@
 mod actors;
 mod effector;
 
-pub mod test_controller;
-pub mod test_sensor;
-
 #[doc(inline)]
 pub use actors::*;
 
 //#[doc(inline)]
 pub use effector::{EffectorMessage, EffectorPort};
+
+#[cfg(test)]
+mod test;
