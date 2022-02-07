@@ -1,7 +1,5 @@
-use crate::external::idleness::IdlenessSetter;
-
-use super::interface::{DisplayServerInterface, SystemState};
-use super::x11;
+use crate::external::idleness::x11;
+use crate::external::idleness::{DisplayServerInterface, IdlenessSetter, SystemState};
 use std::io;
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -96,6 +94,7 @@ fn test_setting_and_getting_timeout() {
             .expect("Couldn't get idleness timeout"),
         default
     );
+    drop(setter);
     drop(monitor);
     child.wait().expect("Xvfb didn't even start");
 }
@@ -128,6 +127,7 @@ fn test_basic_flow() {
         .set_idleness_timeout(-1)
         .expect("Failed to reset screensaver timeout");
     drop(connection);
+    drop(setter);
     drop(monitor);
     child.wait().expect("Xvfb didn't even start");
 }

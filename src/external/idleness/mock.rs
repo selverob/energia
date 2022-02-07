@@ -1,8 +1,11 @@
-use std::{sync::{Arc, Mutex}, cell::Cell};
-use tokio::sync::watch;
-use super::{DisplayServerInterface, SystemState, IdlenessSetter};
+use super::{DisplayServerInterface, IdlenessSetter, SystemState};
 use anyhow::Result;
 use std::io::{Error, ErrorKind};
+use std::{
+    cell::Cell,
+    sync::{Arc, Mutex},
+};
+use tokio::sync::watch;
 
 /// A mock [DisplayServerInterface], usable for testing
 pub struct Interface {
@@ -19,7 +22,7 @@ impl Interface {
             timeout: Arc::new(Mutex::new(Cell::new(timeout))),
             should_fail: Arc::new(Mutex::new(Cell::new(false))),
             sender,
-            receiver
+            receiver,
         }
     }
 
@@ -56,7 +59,10 @@ pub struct Setter {
 impl IdlenessSetter for Setter {
     fn set_idleness_timeout(&self, timeout_in_seconds: i16) -> Result<()> {
         if self.should_fail.lock().unwrap().get() {
-            Err(anyhow::Error::new(Error::new(ErrorKind::Other, "Mock failure")))
+            Err(anyhow::Error::new(Error::new(
+                ErrorKind::Other,
+                "Mock failure",
+            )))
         } else {
             Ok(self.timeout.lock().unwrap().set(timeout_in_seconds))
         }
@@ -64,7 +70,10 @@ impl IdlenessSetter for Setter {
 
     fn get_idleness_timeout(&self) -> Result<i16> {
         if self.should_fail.lock().unwrap().get() {
-            Err(anyhow::Error::new(Error::new(ErrorKind::Other, "Mock failure")))
+            Err(anyhow::Error::new(Error::new(
+                ErrorKind::Other,
+                "Mock failure",
+            )))
         } else {
             Ok(self.timeout.lock().unwrap().get())
         }
