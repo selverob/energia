@@ -14,14 +14,22 @@ jobs:
           command: fmt
           args: -- --check
   test:
-    name: Run the tests
+    name: Run the tests and get coverage
     runs-on: ubuntu-latest
     steps:
       - run: "sudo apt-get update -y && sudo apt-get install -y xvfb"
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      - uses: actions-rs/cargo@v1
+          override: true
+      - name: Run cargo-tarpaulin
+        uses: actions-rs/tarpaulin@v0.1
         with:
-          command: test
+          version: '0.19.1'
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v2
+        with:
+          token: ${{secrets.CODECOV}}

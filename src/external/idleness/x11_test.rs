@@ -1,7 +1,5 @@
 use super::idleness_monitor::{IdlenessMonitor, SystemState};
 use super::x11;
-use std::borrow::Cow;
-use std::env;
 use std::io;
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -37,7 +35,7 @@ fn connect_to_xvfb(display_addr: Option<&str>) -> (RustConnection, usize) {
 #[test]
 fn test_xvfb_init() -> io::Result<()> {
     let (addr, mut child) = initialize_xvfb(true)?;
-    let (connection, screen_num) = connect_to_xvfb(Some(&addr));
+    let (connection, _) = connect_to_xvfb(Some(&addr));
     assert_eq!(connection.setup().roots_len(), 1);
     drop(connection);
     child.wait().expect("Xvfb didn't even start");
