@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::interface::{DisplayServerInterface, SystemState};
 use super::IdlenessSetter;
 use anyhow::{anyhow, Context, Result};
@@ -28,7 +30,7 @@ impl Into<SystemState> for State {
 #[derive(Debug)]
 pub struct X11Interface {
     event_receiver: watch::Receiver<SystemState>,
-    command_connection: RustConnection,
+    command_connection: Arc<RustConnection>,
     /// Stores the ID of the window on which events to stop monitoring thread can be sent
     control_window_id: Window,
     /// X11 atom representing the screensaver attached to the root window
@@ -38,7 +40,7 @@ pub struct X11Interface {
 
 impl X11Interface {
     pub fn new(display_name: Option<&str>) -> Result<X11Interface> {
-        let command_connection = RustConnection::connect(display_name)?.0;
+        let command_connection = Arc::new(RustConnection::connect(display_name)?.0);
         if command_connection
             .extension_information(screensaver::X11_EXTENSION_NAME)?
             .is_none()
@@ -184,16 +186,16 @@ impl X11Interface {
     }
 }
 
-impl<'a> DisplayServerInterface<'a> for X11Interface {
-    type Setter = X11IdlenessSetter<'a>;
+impl DisplayServerInterface for X11Interface {
+    type Setter = X11IdlenessSetter;
 
     fn get_idleness_channel(&self) -> watch::Receiver<SystemState> {
         self.event_receiver.clone()
     }
 
-    fn get_idleness_setter(&'a self) -> Self::Setter {
+    fn get_idleness_setter(&self) -> Self::Setter {
         X11IdlenessSetter {
-            connection: &self.command_connection,
+            connection: self.command_connection.clone(),
         }
     }
 }
@@ -206,12 +208,12 @@ impl Drop for X11Interface {
     }
 }
 
-#[derive(Debug)]
-pub struct X11IdlenessSetter<'a> {
-    connection: &'a RustConnection,
+#[derive(Debug, Clone)]
+pub struct X11IdlenessSetter {
+    connection: Arc<RustConnection>,
 }
 
-impl<'a> IdlenessSetter<'a> for X11IdlenessSetter<'a> {
+impl IdlenessSetter for X11IdlenessSetter {
     fn set_idleness_timeout(&self, timeout: i16) -> Result<()> {
         debug!("Setting X11 idleness timeout to {}", timeout);
         Ok(self
