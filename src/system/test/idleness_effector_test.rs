@@ -16,6 +16,7 @@ async fn test_happy_path() {
         .await
         .expect("Idleness effector failed to roll back");
     assert_eq!(setter.get_idleness_timeout().unwrap(), 600);
+    drop(port);
 }
 
 #[tokio::test]
@@ -35,4 +36,5 @@ async fn test_error_handling() {
         .await
         .expect("Idleness effector failed to roll back");
     assert_eq!(setter.get_idleness_timeout().unwrap(), -1);
+    drop(port);
 }
