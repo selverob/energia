@@ -104,8 +104,7 @@ fn test_basic_flow() {
     let (addr, mut child) = initialize_xvfb(true).expect("Xvfb couldn't be started");
     let (connection, screen_num) = connect_to_xvfb(Some(&addr));
     let root = connection.setup().roots[screen_num].root;
-    let mut monitor =
-        x11::X11Interface::new(Some(&addr)).expect("Failed to create Idleness Monitor");
+    let monitor = x11::X11Interface::new(Some(&addr)).expect("Failed to create Idleness Monitor");
     let setter = monitor.get_idleness_setter();
     setter
         .set_idleness_timeout(2)

@@ -30,10 +30,10 @@ fn test_failure_mode() {
     interface.set_failure_mode(true);
     setter
         .get_idleness_timeout()
-        .expect_err("No failure even when failure mode is false");
+        .expect_err("No failure even when failure mode is true");
     setter
         .set_idleness_timeout(10)
-        .expect_err("No failure even when failure mode is false");
+        .expect_err("No failure even when failure mode is true");
 }
 
 #[test]
