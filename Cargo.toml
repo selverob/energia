@@ -2,15 +2,15 @@
 name = "energia"
 version = "0.1.0"
 authors = ["Róbert Selvek <selverob@fit.cvut.cz>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0"
-env_logger = "0.8.3"
+env_logger = "0.9.0"
 log = "0.4"
-x11rb = { version = "0.8.1", features = ["screensaver", "xtest"] }
-zbus = "1.8.0"
+x11rb = { version = "0.9.0", features = ["screensaver", "xtest"] }
+zbus = "1.8.0" # TODO: Upgrade to 2.0
 zvariant = "2.5.0"
 tokio = { version = "1", features = ["full"] }
