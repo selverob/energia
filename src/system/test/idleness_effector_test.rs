@@ -12,7 +12,7 @@ async fn test_happy_path() {
         .await
         .expect("Idleness effector failed to set idleness");
     assert_eq!(setter.get_idleness_timeout().unwrap(), 10);
-    port.request(EffectorMessage::Rollback)
+    port.request(EffectorMessage::Rollback(1))
         .await
         .expect("Idleness effector failed to roll back");
     assert_eq!(setter.get_idleness_timeout().unwrap(), 600);
@@ -28,11 +28,11 @@ async fn test_error_handling() {
     port.request(EffectorMessage::Execute(10))
         .await
         .expect_err("Idleness effector didn't return an error on broken interface");
-    port.request(EffectorMessage::Rollback)
+    port.request(EffectorMessage::Rollback(1))
         .await
         .expect_err("Idleness effector didn't return an error on broken interface");
     iface.set_failure_mode(false);
-    port.request(EffectorMessage::Rollback)
+    port.request(EffectorMessage::Rollback(1))
         .await
         .expect("Idleness effector failed to roll back");
     assert_eq!(setter.get_idleness_timeout().unwrap(), -1);
