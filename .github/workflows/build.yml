@@ -19,6 +19,10 @@ jobs:
     steps:
       - name: Install dependencies
         run: "sudo apt-get update -y && sudo apt-get install -y xvfb dbus dbus-x11"
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
       - name: Checkout repository
         uses: actions/checkout@v2
       - name: Install stable toolchain
