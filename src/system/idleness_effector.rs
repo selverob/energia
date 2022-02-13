@@ -1,12 +1,10 @@
-use crate::armaf::{ActorPort, EffectorMessage};
+use crate::armaf::{ActorPort, EffectorMessage, EffectorPort};
 use crate::external::idleness::IdlenessController;
 use anyhow::Result;
 use log;
 
-pub fn spawn<S: IdlenessController>(
-    setter: S,
-) -> ActorPort<EffectorMessage<i16>, (), anyhow::Error> {
-    let (port, mut rx) = ActorPort::<EffectorMessage<i16>, (), anyhow::Error>::make();
+pub fn spawn<S: IdlenessController>(setter: S) -> EffectorPort<i16> {
+    let (port, mut rx) = ActorPort::make();
     tokio::spawn(async move {
         log::info!("Starting");
         let initial_timeout = match get_current_timeout(&setter).await {

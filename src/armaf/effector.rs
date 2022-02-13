@@ -1,4 +1,4 @@
-use super::ActorPort;
+use super::{ActorPort, Request};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectorMessage<T> {
@@ -6,4 +6,5 @@ pub enum EffectorMessage<T> {
     Rollback(T),
 }
 
-pub type EffectorPort<T> = ActorPort<EffectorMessage<T>, (), ()>;
+pub type EffectorPort<T> = ActorPort<EffectorMessage<T>, (), anyhow::Error>;
+pub type EffectorRequest<T> = Request<EffectorMessage<T>, (), anyhow::Error>;

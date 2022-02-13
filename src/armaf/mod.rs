@@ -8,7 +8,7 @@ mod effector;
 pub use actors::*;
 
 //#[doc(inline)]
-pub use effector::{EffectorMessage, EffectorPort};
+pub use effector::*;
 
 #[cfg(test)]
 mod test;
