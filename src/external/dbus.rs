@@ -51,6 +51,7 @@ mod test {
     use zbus::{self, Connection};
 
     #[tokio::test]
+    #[ignore]
     async fn test_session() -> Result<()> {
         let mut factory = ConnectionFactory::new();
         let session_1 = factory.get_session().await?;
