@@ -22,7 +22,7 @@ pub fn spawn<S: IdlenessController>(
                 Some(req) => {
                     let timeout_to_set = match req.payload {
                         EffectorMessage::Execute(timeout) => timeout,
-                        EffectorMessage::Rollback => initial_timeout,
+                        EffectorMessage::Rollback(_) => initial_timeout,
                     };
                     let response = set_timeout(timeout_to_set, &setter).await;
                     req.respond(response)
