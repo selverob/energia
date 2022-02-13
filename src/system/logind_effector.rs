@@ -1,4 +1,4 @@
-use crate::armaf::{ActorPort, EffectorMessage, EffectorPort, EffectorRequest};
+use crate::armaf::{error_loop, ActorPort, EffectorMessage, EffectorPort, EffectorRequest};
 use anyhow::Result;
 use logind_zbus::{self, session::SessionProxy};
 use std::process;
@@ -20,7 +20,7 @@ pub fn spawn(connection: zbus::Connection) -> EffectorPort<LogindEffect> {
             }
             Err(error) => {
                 log::error!("Couldn't create a logind session proxy: {}", error);
-                error_loop(rx).await;
+                error_loop(rx, "logind effector failed to find session".to_owned()).await;
             }
         }
     });
@@ -74,23 +74,6 @@ async fn process_message<'c>(
             // visible to reading methods. Should we maybe try to wait until
             // they change?
             Ok(session_proxy.set_locked_hint(argument).await?)
-        }
-    }
-}
-
-async fn error_loop(mut rx: Receiver<EffectorRequest<LogindEffect>>) {
-    loop {
-        match rx.recv().await {
-            None => {
-                log::info!("Stopping");
-                return;
-            }
-            Some(req) => {
-                req.respond(Err(anyhow::format_err!(
-                    "Logind effector couldn't find session, is dead."
-                )))
-                .unwrap();
-            }
         }
     }
 }
