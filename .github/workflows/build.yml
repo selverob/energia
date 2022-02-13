@@ -17,7 +17,8 @@ jobs:
     name: Run the tests and get coverage
     runs-on: ubuntu-latest
     steps:
-      - run: "sudo apt-get update -y && sudo apt-get install -y xvfb"
+      - name: Install dependencies
+        run: "sudo apt-get update -y && sudo apt-get install -y xvfb dbus dbus-x11"
       - name: Checkout repository
         uses: actions/checkout@v2
       - name: Install stable toolchain
