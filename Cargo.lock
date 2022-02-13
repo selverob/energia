@@ -388,8 +388,7 @@ dependencies = [
 [[package]]
 name = "logind-zbus"
 version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c03958f20018a20963daf0c16ada4f271ae2da3e0017fb40caa8b0e3dc5b0226"
+source = "git+https://gitlab.com/sellweek/logind-zbus.git?branch=main#1c0697c2eddd8e2b8fc3a4057a6d9a9989e58570"
 dependencies = [
  "serde",
  "zbus",
@@ -461,9 +460,9 @@ dependencies = [
 
 [[package]]
 name = "ntapi"
-version = "0.3.6"
+version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6bb902e437b6d86e03cce10a7e2af662292c5dfef23b65899ea3ac9354ad44"
+checksum = "c28774a7fd2fbb4f0babd8237ce554b73af68021b5f695a3cebd6c59bac0980f"
 dependencies = [
  "winapi",
 ]

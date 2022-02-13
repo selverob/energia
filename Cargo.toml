@@ -10,7 +10,9 @@ edition = "2021"
 anyhow = "1.0"
 env_logger = "0.9.0"
 log = "0.4"
-logind-zbus = "3.0"
+# logind-zbus = "3.0"
+# Until https://gitlab.com/flukejones/logind-zbus/-/issues/1 gets fixed
+logind-zbus = {git = "https://gitlab.com/sellweek/logind-zbus.git", branch = "main"}
 tokio = { version = "1", features = ["full"] }
 x11rb = { version = "0.9.0", features = ["screensaver", "xtest"] }
 zbus = {version = "2.0", default-features = false, features = ["tokio"]}
