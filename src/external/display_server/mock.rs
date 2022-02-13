@@ -1,4 +1,4 @@
-use super::{DisplayServerInterface, IdlenessController, SystemState};
+use super::{DisplayServer, DisplayServerController, SystemState};
 use anyhow::Result;
 use std::io::{Error, ErrorKind};
 use std::{
@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::sync::watch;
 
-/// A mock [DisplayServerInterface], usable for testing
+/// A mock [DisplayServer], usable for testing
 pub struct Interface {
     timeout: Arc<Mutex<Cell<i16>>>,
     should_fail: Arc<Mutex<Cell<bool>>>,
@@ -35,14 +35,14 @@ impl Interface {
     }
 }
 
-impl DisplayServerInterface for Interface {
+impl DisplayServer for Interface {
     type Controller = Controller;
 
     fn get_idleness_channel(&self) -> watch::Receiver<SystemState> {
         self.receiver.clone()
     }
 
-    fn get_idleness_controller(&self) -> Self::Controller {
+    fn get_controller(&self) -> Self::Controller {
         Controller {
             timeout: self.timeout.clone(),
             should_fail: self.should_fail.clone(),
@@ -56,7 +56,7 @@ pub struct Controller {
     should_fail: Arc<Mutex<Cell<bool>>>,
 }
 
-impl IdlenessController for Controller {
+impl DisplayServerController for Controller {
     fn set_idleness_timeout(&self, timeout_in_seconds: i16) -> Result<()> {
         if self.should_fail.lock().unwrap().get() {
             Err(anyhow::Error::new(Error::new(
@@ -78,4 +78,29 @@ impl IdlenessController for Controller {
             Ok(self.timeout.lock().unwrap().get())
         }
     }
+
+    fn is_dpms_capable(&self) -> Result<bool> {
+        todo!()
+    }
+
+    fn get_dpms_level(&self) -> Result<Option<super::DPMSLevel>> {
+        todo!()
+    }
+
+    fn set_dpms_level(&self, level: super::DPMSLevel) -> Result<()> {
+        todo!()
+    }
+
+    fn set_dpms_state(&self, enabled: bool) -> Result<()> {
+        todo!()
+    }
+
+    fn get_dpms_timeouts(&self) -> Result<super::DPMSTimeouts> {
+        todo!()
+    }
+
+    fn set_dpms_timeouts(&self, timeouts: super::DPMSTimeouts) -> Result<()> {
+        todo!()
+    }
+    
 }

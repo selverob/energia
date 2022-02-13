@@ -1,10 +1,12 @@
-use crate::external::idleness::{mock, DisplayServerInterface, IdlenessController, SystemState};
+use crate::external::display_server::{
+    mock, DisplayServer, DisplayServerController, SystemState,
+};
 
 #[test]
 fn test_setting_and_getting_timeout() {
     let interface = mock::Interface::new(10);
 
-    let controller = interface.get_idleness_controller();
+    let controller = interface.get_controller();
     assert_eq!(
         controller
             .get_idleness_timeout()
@@ -26,7 +28,7 @@ fn test_setting_and_getting_timeout() {
 #[test]
 fn test_failure_mode() {
     let interface = mock::Interface::new(10);
-    let controller = interface.get_idleness_controller();
+    let controller = interface.get_controller();
     interface.set_failure_mode(true);
     controller
         .get_idleness_timeout()

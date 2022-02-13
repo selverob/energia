@@ -17,7 +17,7 @@ enum State {
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Stop;
 
-pub struct IdlenessController {
+pub struct DisplayServerController {
     effects: Vec<Effect>,
     idleness_rx: mpsc::Receiver<IdlenessState>,
 
@@ -30,14 +30,14 @@ pub struct IdlenessController {
 }
 
 pub fn spawn(effects: Vec<Effect>) -> ActorPort<Stop, (), ()> {
-    log::debug!("Configuring new IdlenessController");
+    log::debug!("Configuring new DisplayServerController");
     let (idleness_tx, idleness_rx) = mpsc::channel(8);
     let idleness_effector = idleness_effector::spawn();
     let inhibition_sensor = inhibition_sensor::spawn();
     let idleness_control_channel = idleness_sensor::spawn(idleness_tx);
 
     let (port, rx) = ActorPort::make();
-    let mut controller = IdlenessController {
+    let mut controller = DisplayServerController {
         effects,
         idleness_rx,
         idleness_effector,
@@ -55,13 +55,13 @@ pub fn spawn(effects: Vec<Effect>) -> ActorPort<Stop, (), ()> {
     port
 }
 
-impl IdlenessController {
+impl DisplayServerController {
     fn reinitialize_effect_queue(&mut self) {
         self.effect_queue = self.effects.iter().cloned().collect();
     }
 
     async fn spawn(&mut self) {
-        log::info!("IdlenessController started");
+        log::info!("DisplayServerController started");
 
         loop {
             tokio::select! {
@@ -69,7 +69,7 @@ impl IdlenessController {
                     log::debug!("Got new idleness state: {:?}", idleness_state);
                 }
                 _ = self.stop_receiver.recv() => {
-                    log::info!("IdlenessController stopping");
+                    log::info!("DisplayServerController stopping");
                     return;
                 }
             }
@@ -77,7 +77,7 @@ impl IdlenessController {
     }
 
     async fn reset(&mut self) {
-        log::info!("Resetting IdlenessController");
+        log::info!("Resetting DisplayServerController");
         while let Some(effector) = self.rollback_stack.pop() {
             effector.request(EffectorMessage::Rollback).await;
         }

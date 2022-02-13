@@ -14,6 +14,6 @@ log = "0.4"
 # Until https://gitlab.com/flukejones/logind-zbus/-/issues/1 gets fixed
 logind-zbus = {git = "https://gitlab.com/sellweek/logind-zbus.git", branch = "main"}
 tokio = { version = "1", features = ["full"] }
-x11rb = { version = "0.9.0", features = ["screensaver", "xtest"] }
+x11rb = { version = "0.9.0", features = ["screensaver", "xtest", "dpms"] }
 zbus = {version = "2.0", default-features = false, features = ["tokio"]}
 zvariant = "2.5.0"

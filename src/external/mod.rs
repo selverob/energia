@@ -1,2 +1,2 @@
 pub mod dbus;
-pub mod idleness;
+pub mod display_server;
