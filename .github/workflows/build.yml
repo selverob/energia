@@ -12,7 +12,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
-          args: -- --check
+          args: --all -- --check
   test:
     name: Run the tests and get coverage
     runs-on: ubuntu-latest
