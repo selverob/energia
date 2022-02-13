@@ -13,7 +13,7 @@ impl ConnectionFactory {
     /// Create a new ConnectionFactory.
     ///
     /// No connections are created upon calling this method.
-    fn new() -> ConnectionFactory {
+    pub fn new() -> ConnectionFactory {
         ConnectionFactory {
             system: None,
             session: None,
@@ -21,7 +21,7 @@ impl ConnectionFactory {
     }
 
     /// Get a connection to the system-wide D-Bus
-    async fn get_system(&mut self) -> zbus::Result<zbus::Connection> {
+    pub async fn get_system(&mut self) -> zbus::Result<zbus::Connection> {
         if let Some(c) = &self.system {
             Ok(c.clone())
         } else {
@@ -32,7 +32,7 @@ impl ConnectionFactory {
     }
 
     /// Get a connection to the session's / user's D-Bus
-    async fn get_session(&mut self) -> zbus::Result<zbus::Connection> {
+    pub async fn get_session(&mut self) -> zbus::Result<zbus::Connection> {
         if let Some(c) = &self.session {
             Ok(c.clone())
         } else {
