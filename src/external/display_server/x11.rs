@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use super::interface::{DisplayServer, SystemState, DPMSLevel, DPMSTimeouts};
+use super::interface::{DPMSLevel, DPMSTimeouts, DisplayServer, SystemState};
 use super::DisplayServerController;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use tokio::sync::watch;
 use x11rb::connection::{Connection, RequestConnection};
-use x11rb::protocol::screensaver::{self, ConnectionExt as _, State};
 use x11rb::protocol::dpms::{self, ConnectionExt as _};
+use x11rb::protocol::screensaver::{self, ConnectionExt as _, State};
 use x11rb::protocol::xproto::{
     AtomEnum, Blanking, ConnectionExt as _, CreateWindowAux, EventMask, Exposures, PropMode,
     Screen, Window, WindowClass,
@@ -245,7 +245,10 @@ impl DisplayServerController for X11DisplayServerController {
 
     fn set_dpms_level(&self, level: DPMSLevel) -> Result<()> {
         debug!("Setting DPMS level");
-        Ok(self.connection.dpms_force_level(dpms::DPMSMode::from(level))?.check()?)
+        Ok(self
+            .connection
+            .dpms_force_level(dpms::DPMSMode::from(level))?
+            .check()?)
     }
 
     fn set_dpms_state(&self, enabled: bool) -> Result<()> {
@@ -264,7 +267,10 @@ impl DisplayServerController for X11DisplayServerController {
 
     fn set_dpms_timeouts(&self, timeouts: super::DPMSTimeouts) -> Result<()> {
         debug!("Setting DPMS timeouts");
-        Ok(self.connection.dpms_set_timeouts(timeouts.standby, timeouts.suspend, timeouts.off)?.check()?)
+        Ok(self
+            .connection
+            .dpms_set_timeouts(timeouts.standby, timeouts.suspend, timeouts.off)?
+            .check()?)
     }
 }
 
@@ -275,7 +281,7 @@ impl From<dpms::DPMSMode> for DPMSLevel {
             dpms::DPMSMode::STANDBY => DPMSLevel::Standby,
             dpms::DPMSMode::SUSPEND => DPMSLevel::Suspend,
             dpms::DPMSMode::OFF => DPMSLevel::Off,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }

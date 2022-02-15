@@ -102,5 +102,4 @@ impl DisplayServerController for Controller {
     fn set_dpms_timeouts(&self, timeouts: super::DPMSTimeouts) -> Result<()> {
         todo!()
     }
-    
 }

@@ -35,6 +35,16 @@ pub struct DPMSTimeouts {
     pub off: u16,
 }
 
+impl DPMSTimeouts {
+    pub fn new(standby: u16, suspend: u16, off: u16) -> DPMSTimeouts {
+        DPMSTimeouts {
+            standby,
+            suspend,
+            off,
+        }
+    }
+}
+
 /// The interface between Energia and the user's display server for the purposes
 /// of detecting and controlling system's idleness behavior and display settings.
 pub trait DisplayServer {

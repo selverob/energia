@@ -1,6 +1,4 @@
-use crate::external::display_server::{
-    mock, DisplayServer, DisplayServerController, SystemState,
-};
+use crate::external::display_server::{mock, DisplayServer, DisplayServerController, SystemState};
 
 #[test]
 fn test_setting_and_getting_timeout() {

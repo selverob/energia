@@ -1,5 +1,7 @@
-use crate::external::display_server::x11::{self};
-use crate::external::display_server::{DisplayServer, DisplayServerController, SystemState};
+use crate::external::display_server::x11::{self, X11DisplayServerController, X11Interface};
+use crate::external::display_server::{
+    test, DPMSLevel, DPMSTimeouts, DisplayServer, DisplayServerController, SystemState,
+};
 use std::io;
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,7 +15,7 @@ static DISPLAY_NUMBER: AtomicUsize = AtomicUsize::new(1);
 
 fn initialize_xvfb(enable_extension: bool) -> io::Result<(String, Child)> {
     let mut command = Command::new("Xvfb");
-    command.args(["-br", "-ac", "-screen", "0", "200x200x24", "-terminate", "-audit", "4", "+extension", "DPMS"]);
+    command.args(["-br", "-ac", "-screen", "0", "200x200x24", "-terminate"]);
     if !enable_extension {
         command.args(["-extension", "MIT-SCREEN-SAVER"]);
     }
@@ -43,6 +45,15 @@ where
     child.wait().expect("Xvfb didn't even start");
 }
 
+fn with_system_x11<F>(func: F)
+where
+    F: FnOnce(x11::X11Interface, RustConnection, usize),
+{
+    let iface = x11::X11Interface::new(None).expect("Couldn't create X11 interface");
+    let (connection, screen_num) =
+        RustConnection::connect(None).expect("Couldn't create test connection to system X11");
+    func(iface, connection, screen_num);
+}
 #[test]
 fn test_xvfb_init() {
     with_xvfb(|_, connection, _| {
@@ -129,9 +140,62 @@ fn test_basic_flow() {
     });
 }
 
+// Since this needs to use system's X11 due to dummy X11 driver and XVfb not
+// supporting DPMS, it's ingored by default.
+// Additionally, since we need these tests not to run in parallel, the whole
+// coverage for X11's DPMS is merged into a single test function.
+// This will cause blinking on your local display.
+// Do not move your mouse while running the test!
 #[test]
-fn test_dpms_capability() {
-    with_xvfb(|iface, _, _| {
-        assert!(iface.get_controller().is_dpms_capable().unwrap());
-    })
+#[ignore]
+fn test_dpms() {
+    with_system_x11(|iface, _, _| {
+        test_dpms_state_control(iface.get_controller());
+        test_dpms_levels(iface.get_controller());
+        test_dpms_timeouts(iface.get_controller());
+    });
+}
+
+fn test_dpms_state_control(controller: X11DisplayServerController) {
+    assert!(controller.is_dpms_capable().unwrap());
+    controller.set_dpms_state(false).unwrap();
+    assert_eq!(controller.get_dpms_level().unwrap(), None);
+    controller.set_dpms_state(true).unwrap();
+    assert_eq!(controller.get_dpms_level().unwrap(), Some(DPMSLevel::On));
+}
+
+fn test_dpms_levels(controller: X11DisplayServerController) {
+    controller
+        .set_dpms_state(true)
+        .expect("Couldn't enable DPMS");
+    for level in vec![
+        DPMSLevel::Standby,
+        DPMSLevel::Suspend,
+        DPMSLevel::Off,
+        DPMSLevel::On,
+    ] {
+        controller
+            .set_dpms_level(level)
+            .expect("Failed to set DPMS level");
+        assert_eq!(controller.get_dpms_level().unwrap(), Some(level));
+    }
+}
+
+fn test_dpms_timeouts(controller: X11DisplayServerController) {
+    let original_timeouts = controller
+        .get_dpms_timeouts()
+        .expect("Couldn't get current DPMS timeouts");
+    let test_timeouts = DPMSTimeouts::new(10, 20, 30);
+    controller
+        .set_dpms_timeouts(test_timeouts)
+        .expect("Couldn't set DPMS timeouts");
+    assert_eq!(
+        controller
+            .get_dpms_timeouts()
+            .expect("Couldn't get DPMS timeouts"),
+        test_timeouts
+    );
+    controller
+        .set_dpms_timeouts(original_timeouts)
+        .expect("Couldn't reset DPMS timeouts");
 }
