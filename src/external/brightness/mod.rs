@@ -1,3 +1,4 @@
+/// Control of display backlights
 pub mod interface;
 pub mod logind;
 pub mod mock;

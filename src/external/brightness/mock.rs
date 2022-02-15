@@ -5,12 +5,14 @@ use async_trait::async_trait;
 
 use super::BrightnessController;
 
+/// A mock [BrightnessController], usable when testing the actors using the trait.
 pub struct MockBrightnessController {
     percentage: Mutex<Cell<usize>>,
     should_fail: bool,
 }
 
 impl MockBrightnessController {
+    /// Create a new controller, with the specified initial brightness
     pub fn new(initial_brightness: usize) -> MockBrightnessController {
         MockBrightnessController {
             percentage: Mutex::new(Cell::new(initial_brightness)),
@@ -18,6 +20,7 @@ impl MockBrightnessController {
         }
     }
 
+    /// Set whether operations on this controller should return an error or not
     pub fn set_failure_mode(&mut self, should_fail: bool) {
         self.should_fail = should_fail;
     }
