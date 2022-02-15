@@ -1,6 +1,6 @@
-use crate::external::display_server::x11::{self, X11DisplayServerController, X11Interface};
+use crate::external::display_server::x11::{self, X11DisplayServerController};
 use crate::external::display_server::{
-    test, DPMSLevel, DPMSTimeouts, DisplayServer, DisplayServerController, SystemState,
+    DPMSLevel, DPMSTimeouts, DisplayServer, DisplayServerController, SystemState,
 };
 use std::io;
 use std::process::{Child, Command};
