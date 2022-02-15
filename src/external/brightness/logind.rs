@@ -55,6 +55,9 @@ impl BrightnessController for LogindBrightnessController<'_> {
         Ok(((raw_brightness as f64 / self.max_brightness as f64) * 100 as f64) as usize)
     }
     async fn set_brightness(&self, percentage: usize) -> Result<()> {
+        if percentage > 100 {
+            return Err(anyhow::anyhow!("Cannot set brightness higher than 100%"));
+        }
         let resulting_brightness =
             (self.max_brightness as f64 * (percentage as f64 / 100.0)) as u32;
         Ok(self

@@ -1,5 +1,6 @@
 pub mod interface;
 pub mod logind;
+pub mod mock;
 
 pub use interface::*;
 

@@ -1,6 +1,5 @@
-use crate::external::brightness::BrightnessController;
-
 use super::super::logind;
+use crate::external::brightness::BrightnessController;
 
 #[tokio::test]
 #[ignore]
@@ -29,6 +28,7 @@ async fn test_backlight_setting() {
         .set_brightness(50)
         .await
         .expect("Couldn't set new brightness");
+    assert!(controller.set_brightness(101).await.is_err());
     assert_eq!(
         controller
             .get_brightness()
