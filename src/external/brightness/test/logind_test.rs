@@ -16,10 +16,9 @@ async fn test_backlight_setting() {
         .get_session_by_PID(std::process::id())
         .await
         .expect("Couldn't get session");
-    let controller =
-        logind::LogindBrightnessController::new("intel_backlight", connection, path.as_ref())
-            .await
-            .expect("Couldn't create brightness controller");
+    let controller = logind::LogindBrightnessController::new("intel_backlight", connection, path)
+        .await
+        .expect("Couldn't create brightness controller");
     let original_brightness = controller
         .get_brightness()
         .await

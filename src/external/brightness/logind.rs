@@ -6,7 +6,7 @@ use std::path::Path;
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 use zbus;
-use zbus::zvariant::ObjectPath;
+use zbus::zvariant::{ObjectPath, OwnedObjectPath};
 
 /// A [BrightnessController] which uses the kernel's /sys/class/backlight device
 /// class to control the display brightness.
@@ -15,21 +15,21 @@ use zbus::zvariant::ObjectPath;
 /// via logind Session's SetBrightness method, to allow root-less brightness
 /// setting.
 #[derive(Debug, Clone)]
-pub struct LogindBrightnessController<'a> {
+pub struct LogindBrightnessController {
     device: String,
     device_path: String,
     max_brightness: usize,
-    proxy: SessionProxy<'a>,
+    proxy: SessionProxy<'static>,
 }
 
-impl<'a> LogindBrightnessController<'a> {
+impl LogindBrightnessController {
     /// Create a new controller which will set the brightness on the device
     /// under /sys/class/backlight/{device}.
     pub async fn new(
         device: &str,
         connection: zbus::Connection,
-        session_path: ObjectPath<'a>,
-    ) -> Result<LogindBrightnessController<'a>> {
+        session_path: OwnedObjectPath,
+    ) -> Result<LogindBrightnessController> {
         let proxy = SessionProxy::builder(&connection)
             .path(session_path)?
             .build()
@@ -48,7 +48,7 @@ impl<'a> LogindBrightnessController<'a> {
 }
 
 #[async_trait]
-impl BrightnessController for LogindBrightnessController<'_> {
+impl BrightnessController for LogindBrightnessController {
     async fn get_brightness(&self) -> Result<usize> {
         let raw_brightness =
             read_number_from_file(&format!("{}/{}", self.device_path, "brightness")).await?;

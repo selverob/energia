@@ -8,8 +8,7 @@ pub struct GetInhibitions;
 pub fn spawn(
     connection: zbus::Connection,
 ) -> ActorPort<GetInhibitions, Vec<manager::Inhibitor>, anyhow::Error> {
-    let (port, rx) =
-        ActorPort::<GetInhibitions, Vec<manager::Inhibitor>, anyhow::Error>::make();
+    let (port, rx) = ActorPort::<GetInhibitions, Vec<manager::Inhibitor>, anyhow::Error>::make();
     tokio::spawn(async move {
         log::debug!("Initializing manager proxy");
         match logind_zbus::manager::ManagerProxy::new(&connection).await {
@@ -29,7 +28,10 @@ pub fn spawn(
     port
 }
 
-async fn processing_loop(mut rx: Receiver<Request<GetInhibitions, Vec<manager::Inhibitor>, anyhow::Error>>, proxy: ManagerProxy<'_>) {
+async fn processing_loop(
+    mut rx: Receiver<Request<GetInhibitions, Vec<manager::Inhibitor>, anyhow::Error>>,
+    proxy: ManagerProxy<'_>,
+) {
     log::info!("Started");
     loop {
         match rx.recv().await {

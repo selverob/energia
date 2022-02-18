@@ -1,4 +1,7 @@
-use std::{cell::Cell, sync::Mutex};
+use std::{
+    cell::Cell,
+    sync::{Arc, Mutex},
+};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -6,8 +9,9 @@ use async_trait::async_trait;
 use super::BrightnessController;
 
 /// A mock [BrightnessController], usable when testing the actors using the trait.
+#[derive(Clone)]
 pub struct MockBrightnessController {
-    percentage: Mutex<Cell<usize>>,
+    percentage: Arc<Mutex<Cell<usize>>>,
     should_fail: bool,
 }
 
@@ -15,7 +19,7 @@ impl MockBrightnessController {
     /// Create a new controller, with the specified initial brightness
     pub fn new(initial_brightness: usize) -> MockBrightnessController {
         MockBrightnessController {
-            percentage: Mutex::new(Cell::new(initial_brightness)),
+            percentage: Arc::new(Mutex::new(Cell::new(initial_brightness))),
             should_fail: false,
         }
     }
