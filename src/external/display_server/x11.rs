@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use super::interface::{DisplayServerInterface, SystemState};
-use super::IdlenessController;
+use super::interface::{DPMSLevel, DPMSTimeouts, DisplayServer, SystemState};
+use super::DisplayServerController;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use tokio::sync::watch;
 use x11rb::connection::{Connection, RequestConnection};
+use x11rb::protocol::dpms::{self, ConnectionExt as _};
 use x11rb::protocol::screensaver::{self, ConnectionExt as _, State};
 use x11rb::protocol::xproto::{
     AtomEnum, Blanking, ConnectionExt as _, CreateWindowAux, EventMask, Exposures, PropMode,
@@ -186,15 +187,15 @@ impl X11Interface {
     }
 }
 
-impl DisplayServerInterface for X11Interface {
-    type Controller = X11IdlenessController;
+impl DisplayServer for X11Interface {
+    type Controller = X11DisplayServerController;
 
     fn get_idleness_channel(&self) -> watch::Receiver<SystemState> {
         self.event_receiver.clone()
     }
 
-    fn get_idleness_controller(&self) -> Self::Controller {
-        X11IdlenessController {
+    fn get_controller(&self) -> Self::Controller {
+        X11DisplayServerController {
             connection: self.command_connection.clone(),
         }
     }
@@ -209,13 +210,13 @@ impl Drop for X11Interface {
 }
 
 #[derive(Debug, Clone)]
-pub struct X11IdlenessController {
+pub struct X11DisplayServerController {
     connection: Arc<RustConnection>,
 }
 
-impl IdlenessController for X11IdlenessController {
+impl DisplayServerController for X11DisplayServerController {
     fn set_idleness_timeout(&self, timeout: i16) -> Result<()> {
-        debug!("Setting X11 idleness timeout to {}", timeout);
+        debug!("Setting idleness timeout to {}", timeout);
         Ok(self
             .connection
             .set_screen_saver(timeout, 0, Blanking::NOT_PREFERRED, Exposures::DEFAULT)?
@@ -223,7 +224,85 @@ impl IdlenessController for X11IdlenessController {
     }
 
     fn get_idleness_timeout(&self) -> Result<i16> {
-        debug!("Fetching X11 idleness timeout");
+        debug!("Fetching idleness timeout");
         Ok(self.connection.get_screen_saver()?.reply()?.timeout as i16)
+    }
+
+    fn is_dpms_capable(&self) -> Result<bool> {
+        debug!("Fetching DPMS capability");
+        Ok(self.connection.dpms_capable()?.reply()?.capable)
+    }
+
+    fn get_dpms_level(&self) -> Result<Option<super::DPMSLevel>> {
+        debug!("Fetching DPMS level");
+        let info = self.connection.dpms_info()?.reply()?;
+        if info.state {
+            Ok(Some(DPMSLevel::from(info.power_level)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn set_dpms_level(&self, level: DPMSLevel) -> Result<()> {
+        debug!("Setting DPMS level");
+        Ok(self
+            .connection
+            .dpms_force_level(dpms::DPMSMode::from(level))?
+            .check()?)
+    }
+
+    fn set_dpms_state(&self, enabled: bool) -> Result<()> {
+        debug!("Setting DPMS state");
+        if enabled {
+            Ok(self.connection.dpms_enable()?.check()?)
+        } else {
+            Ok(self.connection.dpms_disable()?.check()?)
+        }
+    }
+
+    fn get_dpms_timeouts(&self) -> Result<super::DPMSTimeouts> {
+        debug!("Fetching DPMS timeouts");
+        Ok(self.connection.dpms_get_timeouts()?.reply()?.into())
+    }
+
+    fn set_dpms_timeouts(&self, timeouts: super::DPMSTimeouts) -> Result<()> {
+        debug!("Setting DPMS timeouts");
+        Ok(self
+            .connection
+            .dpms_set_timeouts(timeouts.standby, timeouts.suspend, timeouts.off)?
+            .check()?)
+    }
+}
+
+impl From<dpms::DPMSMode> for DPMSLevel {
+    fn from(mode: dpms::DPMSMode) -> Self {
+        match mode {
+            dpms::DPMSMode::ON => DPMSLevel::On,
+            dpms::DPMSMode::STANDBY => DPMSLevel::Standby,
+            dpms::DPMSMode::SUSPEND => DPMSLevel::Suspend,
+            dpms::DPMSMode::OFF => DPMSLevel::Off,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<DPMSLevel> for dpms::DPMSMode {
+    fn from(level: DPMSLevel) -> Self {
+        match level {
+            DPMSLevel::On => dpms::DPMSMode::ON,
+            DPMSLevel::Standby => dpms::DPMSMode::STANDBY,
+            DPMSLevel::Suspend => dpms::DPMSMode::SUSPEND,
+            DPMSLevel::Off => dpms::DPMSMode::OFF,
+        }
+    }
+}
+
+impl From<dpms::GetTimeoutsReply> for DPMSTimeouts {
+    fn from(timeouts: dpms::GetTimeoutsReply) -> Self {
+        DPMSTimeouts {
+            standby: timeouts.standby_timeout,
+            suspend: timeouts.suspend_timeout,
+            off: timeouts.off_timeout,
+        }
     }
 }

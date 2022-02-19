@@ -24,6 +24,7 @@ async fn test_inhibition_sensor() {
         .request(inhibition_sensor::GetInhibitions)
         .await
         .expect("inhibition sensor internal error");
+    let inhibitor_count = inhibitors.len();
     let our_inhibitor = inhibitors
         .iter()
         .find(|i| i.who() == "energia tests")
@@ -35,4 +36,9 @@ async fn test_inhibition_sensor() {
     assert_eq!(our_inhibitor.why(), "testing idleness manager");
     assert_eq!(our_inhibitor.mode(), manager::Mode::Block);
     drop(inhibition_fd);
+    let new_inhibitors = port
+        .request(inhibition_sensor::GetInhibitions)
+        .await
+        .expect("inhibition sensor internal error");
+    assert_eq!(new_inhibitors.len(), inhibitor_count - 1);
 }

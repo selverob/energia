@@ -8,12 +8,14 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
+async-trait = "0.1"
 env_logger = "0.9.0"
 log = "0.4"
 # logind-zbus = "3.0"
 # Until https://gitlab.com/flukejones/logind-zbus/-/issues/1 gets fixed
 logind-zbus = {git = "https://gitlab.com/sellweek/logind-zbus.git", branch = "main"}
 tokio = { version = "1", features = ["full"] }
-x11rb = { version = "0.9.0", features = ["screensaver", "xtest"] }
+tokio-stream = {version = "0.1", features = ["fs"] }
+x11rb = { version = "0.9.0", features = ["screensaver", "xtest", "dpms"] }
 zbus = {version = "2.0", default-features = false, features = ["tokio"]}
 zvariant = "2.5.0"
