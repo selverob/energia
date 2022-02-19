@@ -42,7 +42,11 @@ impl ServerConfiguration {
     async fn apply<C: ds::DisplayServerController>(self, controller: &C) -> Result<()> {
         let level_controller = controller.clone();
         let level_handle = if let Some(level) = self.level {
-            tokio::task::spawn_blocking(move || level_controller.set_dpms_level(level))
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                level_controller.set_dpms_state(true)?;
+                level_controller.set_dpms_level(level)?;
+                Ok(())
+            })
         } else {
             tokio::task::spawn_blocking(move || level_controller.set_dpms_state(false))
         };
@@ -57,7 +61,7 @@ impl ServerConfiguration {
     }
 }
 
-fn spawn<B: BrightnessController, D: ds::DisplayServerController>(
+pub fn spawn<B: BrightnessController, D: ds::DisplayServerController>(
     brightness_controller: B,
     ds_controller: D,
 ) -> EffectorPort<DisplayEffect> {
@@ -71,6 +75,8 @@ fn spawn<B: BrightnessController, D: ds::DisplayServerController>(
                 None
             }
         };
+
+        prepare_dpms(&ds_controller).await;
         processing_loop(rx, &brightness_controller, &ds_controller).await;
 
         if let Some(config) = original_configuration {
@@ -114,6 +120,7 @@ async fn processing_loop<B: BrightnessController, D: ds::DisplayServerController
                         log::error!("Brightness rollback called without previous dimming.");
                         req.respond(Ok(())).unwrap();
                     }
+                    old_brightness = None;
                 }
                 EffectorMessage::Rollback(DisplayEffect::TurnOff) => {
                     req.respond(set_dpms_level(ds::DPMSLevel::On, ds_controller).await)
@@ -122,6 +129,11 @@ async fn processing_loop<B: BrightnessController, D: ds::DisplayServerController
             },
             None => {
                 log::info!("Terminating");
+                if let Some(b) = old_brightness {
+                    if let Err(e) = brightness_controller.set_brightness(b).await {
+                        log::error!("Failed to reset brightness on termination: {}", e);
+                    }
+                }
                 return;
             }
         }
@@ -142,4 +154,14 @@ async fn set_dpms_level<D: DisplayServerController>(
 ) -> Result<()> {
     let sent_controller = ds_controller.clone();
     tokio::task::spawn_blocking(move || sent_controller.set_dpms_level(level)).await?
+}
+
+async fn prepare_dpms<D: DisplayServerController>(d: &D) {
+    let config = ServerConfiguration {
+        level: Some(ds::DPMSLevel::On),
+        timeouts: ds::DPMSTimeouts::new(0, 0, 0),
+    };
+    if let Err(e) = config.apply(d).await {
+        log::error!("Couldn't prepare DPMS for display effector: {}", e);
+    }
 }
