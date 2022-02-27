@@ -1,24 +1,120 @@
+//! Higher level abstractions on top of [super::ports]
+
 use super::ActorPort;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use log;
 use tokio::sync::oneshot;
 
+/// A trait which allows you to write actor code in a structured way. Actors run
+/// in Tokio tasks and have three lifecycle phases.
+///
+/// Initialization occurs first and the [spawn_actor] function doesn't return
+/// until it has finished, either successfully or with an error.
+///
+/// Then, in handling phase, handle_message is invoked to process each request
+/// sent to the [ActorPort] returned by [spawn_actor].
+///
+/// After all [ActorPort]s for the actor get dropped, the teardown phase is
+/// entered. Actor can perform any asynchronous clean up tasks it needs to do.
+/// For example, it can return a system component to a state in which it was
+/// before the actor took control of it (for example, reset the display
+/// brightness it was controlling). Keep in mind that this method is only
+/// supposed to be used for asynchronous clean up tasks. All other kinds of
+/// cleanup should be performed using an impl of [Drop].
+///
+/// # Examples
+///
+/// An example actor implemented using this trait:
+///
+/// ```rust
+/// struct TestActor {
+///     current_number: usize,
+///     fail_at: usize,
+///     fail_initialization: bool,
+///     drop_notifier: mpsc::Sender<()>,
+/// }
+///
+/// impl TestActor {
+///     fn new(fail_at: usize, fail_initialization: bool) -> (TestActor, mpsc::Receiver<()>) {
+///         let (drop_sender, drop_receiver) = mpsc::channel(1);
+///         (
+///             TestActor {
+///                 current_number: 0,
+///                 drop_notifier: drop_sender,
+///                 fail_at,
+///                 fail_initialization,
+///             },
+///             drop_receiver,
+///         )
+///     }
+/// }
+///
+/// #[async_trait]
+/// impl Actor<(), usize> for TestActor {
+///     fn get_name(&self) -> String {
+///         "test_actor".to_owned()
+///     }
+///
+///     async fn handle_message(&mut self, _: ()) -> Result<usize> {
+///         self.current_number += 1;
+///         if self.current_number == self.fail_at {
+///             Err(anyhow!("Saturated"))
+///         } else {
+///             Ok(self.current_number)
+///         }
+///     }
+///
+///     async fn initialize(&mut self) -> Result<()> {
+///         if self.fail_initialization {
+///             Err(anyhow!("Forced initialization fail"))
+///         } else {
+///             Ok(())
+///         }
+///     }
+///
+///     async fn tear_down(&mut self) -> Result<()> {
+///         Ok(self.drop_notifier.send(()).await?)
+///     }
+/// }
+/// ```
 #[async_trait]
 pub trait Actor<P, R>: Send + 'static {
+    /// Returns the name of the Actor, which is used in logging messages
     fn get_name(&self) -> String;
 
+    /// Handle a request sent to the [ActorPort] of the Actor.
+    ///
+    /// The returned success or failure are sent to the requester using
+    /// [super::Request<P, R, E>::respond] method.
     async fn handle_message(&mut self, payload: P) -> Result<R>;
 
+    /// Performs actor initialization tasks.
+    ///
+    /// An error in this method will cause
+    /// [spawn_actor] to fail with the error. Default implementation just returns `Ok(())`
     async fn initialize(&mut self) -> Result<()> {
         Ok(())
     }
 
+    /// Perform actor teardown / cleanup tasks.
+    ///
+    /// Since this method is invoked at a non-deterministic time (after the
+    /// Actor's [ActorPort]s are dropped), the errors are only logged using
+    /// [log::error], nothing else is done with them.
     async fn tear_down(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
+/// Starts a task for the given [Actor] and handles low-level details of request
+/// receiving and response sending.
+///
+/// See [Actor] for more information about when its methods are called.
+///
+/// This method waits for the initialization of the actor to be done before
+/// returning the [ActorPort]. If initialization fails, an error is returned
+/// instead.
 pub async fn spawn_actor<P, R>(
     mut actor: impl Actor<P, R>,
 ) -> Result<ActorPort<P, R, anyhow::Error>>
@@ -75,8 +171,3 @@ where
         Err(e) => Err(anyhow!(e)),
     }
 }
-
-// struct ActorManager<A> {
-//     actor: A,
-//     recv_chan: mpsc::Receiver<Request<P, R>>
-// }

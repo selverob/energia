@@ -1,3 +1,5 @@
+//! Type definitions for implementation of Effectors.
+
 use super::{ActorPort, Request};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
