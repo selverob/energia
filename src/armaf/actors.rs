@@ -1,138 +1,82 @@
-//! Basic primitives for constructing a simple actor system on top of Tokio tasks.
+use super::ActorPort;
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
+use log;
+use tokio::sync::oneshot;
 
-use std::result::Result;
+#[async_trait]
+pub trait Actor<P, R>: Send + 'static {
+    fn get_name(&self) -> String;
 
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::{mpsc, oneshot};
+    async fn handle_message(&mut self, payload: P) -> Result<R>;
 
-/// A shorthand type defining a [oneshot::Receiver] which is used to receive the
-/// results of an operation invoked by a [Request].
-type ResponseReceiver<R, E> = oneshot::Receiver<Result<R, E>>;
-
-/// A request sent to an actor.
-///
-/// A Request contains a generic payload which has to match the payload accepted
-/// by the [ActorPort] and a [oneshot] channel on which the result of the
-/// operation or an error will be returned.
-pub struct Request<P, R, E> {
-    pub payload: P,
-    pub response_sender: oneshot::Sender<Result<R, E>>,
-}
-
-impl<P, R, E> Request<P, R, E> {
-    /// Creates a new [Request], populating the struct with the given payload and
-    /// constructing a correctly typed [oneshot] channel. The created
-    /// [oneshot::Sender] is stored inside the request, while the
-    /// [ResponseReceiver] is returned.
-    pub fn new(payload: P) -> (Request<P, R, E>, ResponseReceiver<R, E>) {
-        let (response_sender, response_receiver) = oneshot::channel();
-        let request = Request {
-            payload,
-            response_sender,
-        };
-        (request, response_receiver)
+    async fn initialize(&mut self) -> Result<()> {
+        Ok(())
     }
 
-    /// A convenience method for sending a response on the [Request]'s [oneshot]
-    /// channel.
-    pub fn respond(self, response: Result<R, E>) -> Result<(), Result<R, E>> {
-        self.response_sender.send(response)
+    async fn tear_down(&mut self) -> Result<()> {
+        Ok(())
     }
 }
 
-/// An error occuring during the exchange of messages with an actor.
-#[derive(Debug)]
-pub enum ActorRequestError<E> {
-    /// An error occurred in [oneshot::Sender::send()]
-    SendError,
-    /// An error occurred while awaiting the [oneshot::Receiver]
-    RecvError,
-    /// The actor itself returned an error
-    ActorError(E),
-}
-
-/// A communication channel with an actor.
-///
-/// This is the main primitive of the actor system. There is no structure which
-/// can be used to reference an actor, which is only a [tokio::task].
-/// An ActorPort allows you to send [Request]s to the actor. The
-/// [oneshot] channel contained in the [Request] is then used to communicate the
-/// results back to its sender.
-///
-/// ActorPorts are clone-able. When an actor is spawned, it will generally
-/// return a single ActorPort which can then be cloned and stored in multiple
-/// places. This has two important implications:
-///
-/// 1. An actor must not assume that it's only communicating with a single
-///    different actor. If it does make this assumption (for example by
-///    expecting a specified series of messages in a defined order), that should
-///    be documented.
-///
-/// 2. An actor should not expect a specific message instructing it to stop
-///    itself. Any cleanup actions should be performed once a None is returned
-///    on from the [mpsc::Receiver::recv], indicating that there all
-///    [mpsc::Sender]s have been dropped.
-#[derive(Clone, Debug)]
-pub struct ActorPort<P, R, E> {
-    message_sender: mpsc::Sender<Request<P, R, E>>,
-}
-
-impl<P, R, E> ActorPort<P, R, E> {
-    /// Creates a new ActorPort which will send requests through the given Sender
-    pub fn new(message_sender: mpsc::Sender<Request<P, R, E>>) -> ActorPort<P, R, E> {
-        ActorPort { message_sender }
-    }
-
-    /// A convenience function for creating an ActorPort initialized with a
-    /// Sender side of an [mpsc] channe.
-    ///
-    /// The Receiver side is returned too. This function can be used to simplify
-    /// actor initialization. The Receiver is moved into the [tokio::task] for
-    /// the actor while the ActorPort is returned to the caller.
-    pub fn make() -> (ActorPort<P, R, E>, mpsc::Receiver<Request<P, R, E>>) {
-        let (tx, rx) = mpsc::channel::<Request<P, R, E>>(8);
-        (ActorPort::new(tx), rx)
-    }
-
-    /// Sends a [Request] to the actor. Does not do anything else. Prefer using
-    /// the [Self::request] method.
-    pub async fn raw_request(
-        &self,
-        r: Request<P, R, E>,
-    ) -> Result<(), SendError<Request<P, R, E>>> {
-        self.message_sender.send(r).await
-    }
-
-    /// Constructs a [Request] with the given payload sends it on this port and
-    /// waits for the actor's response.
-    pub async fn request(&self, payload: P) -> Result<R, ActorRequestError<E>> {
-        let (req, rx) = Request::new(payload);
-        if self.raw_request(req).await.is_err() {
-            return Err(ActorRequestError::SendError);
+pub async fn launch_actor<P, R>(
+    mut actor: impl Actor<P, R>,
+) -> Result<ActorPort<P, R, anyhow::Error>>
+where
+    P: Send + 'static,
+    R: Send + 'static,
+{
+    let name = actor.get_name();
+    log::debug!("{} launching", name);
+    let (port, mut rx) = ActorPort::make();
+    let (initialization_sender, initialization_receiver) = oneshot::channel::<Result<()>>();
+    tokio::spawn(async move {
+        let name = actor.get_name();
+        let init_result = actor.initialize().await;
+        let had_init_error = init_result.is_err();
+        initialization_sender
+            .send(init_result)
+            .expect("Initialization sender failure");
+        if had_init_error {
+            return;
         }
-        match rx.await {
-            Err(_) => Err(ActorRequestError::RecvError),
-            Ok(inner_result) => match inner_result {
-                Ok(response) => Ok(response),
-                Err(actor_error) => Err(ActorRequestError::ActorError(actor_error)),
-            },
-        }
-    }
-}
-
-pub async fn error_loop<P, R>(
-    mut rx: mpsc::Receiver<Request<P, R, anyhow::Error>>,
-    error_message: String,
-) {
-    loop {
-        match rx.recv().await {
-            None => {
-                log::info!("Stopping");
-                return;
-            }
-            Some(req) => {
-                req.respond(Err(anyhow::anyhow!(error_message.clone())));
+        log::info!("{} initialized successfully", name);
+        loop {
+            match rx.recv().await {
+                Some(req) => {
+                    let res = actor.handle_message(req.payload).await;
+                    if let Err(e) = &res {
+                        log::error!("{} message handler returned error: {}", name, e);
+                    }
+                    if let Err(_) = req.response_sender.send(res) {
+                        log::error!(
+                            "{} failed to respond to request (requester went away?)",
+                            name
+                        );
+                    }
+                }
+                None => {
+                    log::debug!("{} stopping", name);
+                    if let Err(e) = actor.tear_down().await {
+                        log::error!("{} failed to tear down: {}", name, e);
+                    }
+                    return;
+                }
             }
         }
+    });
+
+    match initialization_receiver.await {
+        Ok(Ok(_)) => Ok(port),
+        Ok(Err(e)) => {
+            log::error!("Error initializing {}: {}", name, e);
+            Err(e)
+        }
+        Err(e) => Err(anyhow!(e)),
     }
 }
+
+// struct ActorManager<A> {
+//     actor: A,
+//     recv_chan: mpsc::Receiver<Request<P, R>>
+// }
