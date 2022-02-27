@@ -1,4 +1,4 @@
-use crate::armaf::EffectorMessage;
+use crate::armaf::{spawn_actor, EffectorMessage};
 use crate::external::display_server::{mock, DisplayServer, DisplayServerController};
 use crate::system::idleness_effector;
 use tokio;
@@ -7,7 +7,11 @@ use tokio;
 async fn test_happy_path() {
     let iface = mock::Interface::new(600);
     let setter = iface.get_controller();
-    let port = idleness_effector::spawn(iface.get_controller());
+    let port = spawn_actor(idleness_effector::IdlenessEffector::new(
+        iface.get_controller(),
+    ))
+    .await
+    .expect("Actor initialization failed");
     port.request(EffectorMessage::Execute(10))
         .await
         .expect("Idleness effector failed to set idleness");
@@ -24,7 +28,11 @@ async fn test_error_handling() {
     let iface = mock::Interface::new(600);
     iface.set_failure_mode(true);
     let setter = iface.get_controller();
-    let port = idleness_effector::spawn(iface.get_controller());
+    let port = spawn_actor(idleness_effector::IdlenessEffector::new(
+        iface.get_controller(),
+    ))
+    .await
+    .expect("Actor initialization failed");
     port.request(EffectorMessage::Execute(10))
         .await
         .expect_err("Idleness effector didn't return an error on broken interface");
