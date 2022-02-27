@@ -8,6 +8,9 @@ mod ports;
 #[doc(inline)]
 pub use ports::*;
 
+#[doc(inline)]
+pub use actors::*;
+
 //#[doc(inline)]
 pub use effector::*;
 

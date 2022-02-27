@@ -1,4 +1,4 @@
-use crate::armaf::EffectorMessage;
+use crate::armaf::{spawn_actor, EffectorMessage};
 use crate::external::dbus;
 use crate::system::logind_effector;
 use anyhow::Result;
@@ -14,8 +14,11 @@ async fn test_idle_hints() {
     let mut factory = dbus::ConnectionFactory::new();
     let test_connection = factory.get_system().await.unwrap();
     let session_proxy = get_session_proxy(&test_connection).await.unwrap();
-    let actor_connection = factory.get_system().await.unwrap();
-    let port = logind_effector::spawn(actor_connection);
+    let port = spawn_actor(logind_effector::LogindEffector::new(
+        factory.get_system().await.unwrap(),
+    ))
+    .await
+    .expect("Actor initialization failed");
     port.request(EffectorMessage::Execute(
         logind_effector::LogindEffect::IdleHint,
     ))
@@ -37,8 +40,11 @@ async fn test_locked_hints() {
     let mut factory = dbus::ConnectionFactory::new();
     let test_connection = factory.get_system().await.unwrap();
     let session_proxy = get_session_proxy(&test_connection).await.unwrap();
-    let actor_connection = factory.get_system().await.unwrap();
-    let port = logind_effector::spawn(actor_connection);
+    let port = spawn_actor(logind_effector::LogindEffector::new(
+        factory.get_system().await.unwrap(),
+    ))
+    .await
+    .expect("Actor initialization failed");
     port.request(EffectorMessage::Execute(
         logind_effector::LogindEffect::LockedHint,
     ))

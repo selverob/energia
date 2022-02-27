@@ -19,7 +19,7 @@ pub trait Actor<P, R>: Send + 'static {
     }
 }
 
-pub async fn launch_actor<P, R>(
+pub async fn spawn_actor<P, R>(
     mut actor: impl Actor<P, R>,
 ) -> Result<ActorPort<P, R, anyhow::Error>>
 where
@@ -27,7 +27,7 @@ where
     R: Send + 'static,
 {
     let name = actor.get_name();
-    log::debug!("{} launching", name);
+    log::debug!("{} spawning", name);
     let (port, mut rx) = ActorPort::make();
     let (initialization_sender, initialization_receiver) = oneshot::channel::<Result<()>>();
     tokio::spawn(async move {

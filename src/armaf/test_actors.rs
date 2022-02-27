@@ -1,4 +1,4 @@
-use super::actors::{launch_actor, Actor};
+use super::actors::{spawn_actor, Actor};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use tokio::sync::mpsc;
@@ -56,7 +56,7 @@ impl Actor<(), usize> for TestActor {
 #[tokio::test]
 async fn test_happy_path() {
     let (actor, mut notifier) = TestActor::new(10, false);
-    let port = launch_actor(actor).await.expect("No port returned");
+    let port = spawn_actor(actor).await.expect("No port returned");
     assert_eq!(port.request(()).await.unwrap(), 1);
     assert_eq!(port.request(()).await.unwrap(), 2);
     drop(port);
@@ -69,7 +69,7 @@ async fn test_happy_path() {
 #[tokio::test]
 async fn test_response_failure() {
     let (actor, mut notifier) = TestActor::new(3, false);
-    let port = launch_actor(actor).await.expect("No port returned");
+    let port = spawn_actor(actor).await.expect("No port returned");
     assert_eq!(port.request(()).await.unwrap(), 1);
     assert_eq!(port.request(()).await.unwrap(), 2);
     assert!(port.request(()).await.is_err());
@@ -83,5 +83,5 @@ async fn test_response_failure() {
 #[tokio::test]
 async fn test_initialization_failure() {
     let (actor, _) = TestActor::new(3, true);
-    assert!(launch_actor(actor).await.is_err());
+    assert!(spawn_actor(actor).await.is_err());
 }
