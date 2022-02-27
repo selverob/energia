@@ -1,5 +1,5 @@
 use super::super::display_effector;
-use crate::armaf::EffectorMessage;
+use crate::armaf::{spawn_actor, EffectorMessage};
 use crate::external::brightness as bs;
 use crate::external::brightness::BrightnessController;
 use crate::external::display_server as ds;
@@ -20,7 +20,12 @@ async fn test_original_config_saving() {
     ds_controller
         .set_dpms_timeouts(ds::DPMSTimeouts::new(42, 43, 44))
         .unwrap();
-    let port = display_effector::spawn(brightness.clone(), display.get_controller());
+    let port = spawn_actor(display_effector::DisplayEffector::new(
+        brightness.clone(),
+        display.get_controller(),
+    ))
+    .await
+    .expect("Actor initialization failed");
 
     tokio::time::sleep(Duration::from_millis(250)).await;
 
@@ -57,7 +62,12 @@ async fn test_basic_flow() {
     let display = ds::mock::Interface::new(-1);
     let ds_controller = display.get_controller();
 
-    let port = display_effector::spawn(brightness.clone(), display.get_controller());
+    let port = spawn_actor(display_effector::DisplayEffector::new(
+        brightness.clone(),
+        display.get_controller(),
+    ))
+    .await
+    .expect("Actor initialization failed");
     port.request(EffectorMessage::Execute(DisplayEffect::Dim))
         .await
         .expect("Failed to dim display");
@@ -91,7 +101,12 @@ async fn test_undim_on_termination() {
     let brightness = bs::mock::MockBrightnessController::new(80);
     let display = ds::mock::Interface::new(-1);
 
-    let port = display_effector::spawn(brightness.clone(), display.get_controller());
+    let port = spawn_actor(display_effector::DisplayEffector::new(
+        brightness.clone(),
+        display.get_controller(),
+    ))
+    .await
+    .expect("Actor initialization failed");
     port.request(EffectorMessage::Execute(DisplayEffect::Dim))
         .await
         .expect("Failed to dim display");
@@ -107,8 +122,15 @@ async fn test_failing_display_server() {
     let display = ds::mock::Interface::new(-1);
     let ds_controller = display.get_controller();
     ds_controller.set_dpms_level(ds::DPMSLevel::On).unwrap();
+    let port = spawn_actor(display_effector::DisplayEffector::new(
+        brightness.clone(),
+        display.get_controller(),
+    ))
+    .await
+    .expect("Actor initialization failed");
+
     display.set_failure_mode(true);
-    let port = display_effector::spawn(brightness.clone(), display.get_controller());
+
     port.request(EffectorMessage::Execute(DisplayEffect::Dim))
         .await
         .expect("Failed to dim display");
@@ -129,11 +151,18 @@ async fn test_failing_display_server() {
 
 #[tokio::test]
 async fn test_failing_brightness_controller() {
-    let mut brightness = bs::mock::MockBrightnessController::new(80);
-    brightness.set_failure_mode(true);
+    let brightness = bs::mock::MockBrightnessController::new(80);
     let display = ds::mock::Interface::new(-1);
     let ds_controller = display.get_controller();
-    let port = display_effector::spawn(brightness.clone(), display.get_controller());
+    let port = spawn_actor(display_effector::DisplayEffector::new(
+        brightness.clone(),
+        display.get_controller(),
+    ))
+    .await
+    .expect("Actor initialization failed");
+
+    brightness.set_failure_mode(true);
+
     port.request(EffectorMessage::Execute(DisplayEffect::Dim))
         .await
         .expect_err("No error returned from failing controller");
@@ -156,7 +185,7 @@ async fn test_failing_brightness_controller() {
 
     port.request(EffectorMessage::Rollback(DisplayEffect::Dim))
         .await
-        .expect("Error shouldn't be returned from undim dim if no dimming occurred");
+        .expect_err("An error should be returned from undim if no dimming occurred");
 
     brightness.set_failure_mode(false);
     port.request(EffectorMessage::Execute(DisplayEffect::Dim))
