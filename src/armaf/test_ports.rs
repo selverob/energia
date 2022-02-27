@@ -1,10 +1,10 @@
-use super::actors;
+use super::ports;
 use tokio;
 
 #[tokio::test]
 async fn test_request_response() {
-    let new_return = actors::Request::new(());
-    let request: actors::Request<(), bool, ()> = new_return.0;
+    let new_return = ports::Request::new(());
+    let request: ports::Request<(), bool, ()> = new_return.0;
     let receiver = new_return.1;
     assert_eq!(request.payload, ());
     request
@@ -35,7 +35,7 @@ async fn test_actor_port() {
         .request(TestActorMessage::Increment)
         .await
         .expect_err("Expected an error from actor");
-    if let actors::ActorRequestError::ActorError(e) = error {
+    if let ports::ActorRequestError::ActorError(e) = error {
         assert_eq!(e.to_string(), "Saturated");
         assert_eq!(e.kind(), std::io::ErrorKind::Other);
     } else {
@@ -50,7 +50,7 @@ async fn test_request_errors() {
         .request(TestActorMessage::Terminate)
         .await
         .expect_err("Actor should close the oneshot channel when terminating");
-    if let actors::ActorRequestError::RecvError = recv_error {
+    if let ports::ActorRequestError::RecvError = recv_error {
     } else {
         panic!("A RecvError is not translated correctly");
     }
@@ -58,7 +58,7 @@ async fn test_request_errors() {
         .request(TestActorMessage::Increment)
         .await
         .expect_err("Actor request channel is still sendable after actor termination");
-    if let actors::ActorRequestError::SendError = send_error {
+    if let ports::ActorRequestError::SendError = send_error {
     } else {
         panic!("A SendError is not translated correctly");
     }
@@ -83,8 +83,8 @@ enum TestActorMessage {
     Terminate,
 }
 
-fn spawn_two_increments_one_error() -> actors::ActorPort<TestActorMessage, usize, std::io::Error> {
-    let (port, mut rx) = actors::ActorPort::make();
+fn spawn_two_increments_one_error() -> ports::ActorPort<TestActorMessage, usize, std::io::Error> {
+    let (port, mut rx) = ports::ActorPort::make();
     tokio::spawn(async move {
         let mut count = 0;
         while let Some(req) = rx.recv().await {
@@ -112,8 +112,8 @@ fn spawn_two_increments_one_error() -> actors::ActorPort<TestActorMessage, usize
     port
 }
 
-fn spawn_error_loop() -> actors::ActorPort<(), (), anyhow::Error> {
-    let (port, rx) = actors::ActorPort::make();
+fn spawn_error_loop() -> ports::ActorPort<(), (), anyhow::Error> {
+    let (port, rx) = ports::ActorPort::make();
     tokio::spawn(async move {
         super::error_loop(rx, "operation failed successfully".to_string()).await;
     });

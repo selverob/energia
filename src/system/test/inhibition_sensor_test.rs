@@ -1,16 +1,19 @@
+use crate::armaf::spawn_actor;
 use crate::external::dbus::ConnectionFactory;
 use crate::system::inhibition_sensor;
 use logind_zbus::manager;
-use std::os::unix::prelude::FromRawFd;
 use tokio;
-use zvariant::OwnedFd;
 
 #[tokio::test]
 async fn test_inhibition_sensor() {
     let mut factory = ConnectionFactory::new();
     let test_connection = factory.get_system().await.unwrap();
     let manager_proxy = manager::ManagerProxy::new(&test_connection).await.unwrap();
-    let port = inhibition_sensor::spawn(factory.get_system().await.unwrap());
+    let port = spawn_actor(inhibition_sensor::InhibitionSensor::new(
+        factory.get_system().await.unwrap(),
+    ))
+    .await
+    .expect("Actor initialization failed");
     let inhibition_fd = manager_proxy
         .inhibit(
             manager::InhibitType::Idle,

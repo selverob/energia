@@ -1,15 +1,8 @@
-use crate::armaf::{
-    error_loop, ActorPort, EffectorMessage, EffectorPort, EffectorRequest, Request,
-};
+use crate::armaf::{Actor, EffectorMessage};
 use crate::external::brightness::BrightnessController;
 use crate::external::display_server::{self as ds, DisplayServerController};
-use anyhow::Result;
-use logind_zbus::{self, session::SessionProxy};
-use tokio::fs;
-use tokio::io::AsyncReadExt;
-use tokio::sync::mpsc::Receiver;
-use tokio_stream::wrappers::ReadDirStream;
-use tokio_stream::StreamExt;
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 
 pub enum DisplayEffect {
     Dim,
@@ -61,107 +54,96 @@ impl ServerConfiguration {
     }
 }
 
-pub fn spawn<B: BrightnessController, D: ds::DisplayServerController>(
+pub struct DisplayEffector<B: BrightnessController, D: ds::DisplayServerController> {
     brightness_controller: B,
     ds_controller: D,
-) -> EffectorPort<DisplayEffect> {
-    let (port, rx) = ActorPort::make();
-    tokio::spawn(async move {
-        log::debug!("Obtaining original display server settings");
-        let original_configuration = match ServerConfiguration::fetch(&ds_controller).await {
-            Ok(configuration) => Some(configuration),
-            Err(e) => {
-                log::error!("Failed to obtain original display server settings: {}", e);
-                None
-            }
-        };
-
-        prepare_dpms(&ds_controller).await;
-        processing_loop(rx, &brightness_controller, &ds_controller).await;
-
-        if let Some(config) = original_configuration {
-            log::debug!("Rolling back display configuration");
-            if let Err(e) = config.apply(&ds_controller).await {
-                log::error!("Error when rolling back display configuration: {}", e);
-            }
-        }
-    });
-    port
+    original_configuration: ServerConfiguration,
+    previous_brightness: Option<usize>,
 }
 
-async fn processing_loop<B: BrightnessController, D: ds::DisplayServerController>(
-    mut rx: Receiver<EffectorRequest<DisplayEffect>>,
-    brightness_controller: &B,
-    ds_controller: &D,
-) {
-    log::info!("Started");
-    let mut old_brightness: Option<usize> = None;
-    loop {
-        match rx.recv().await {
-            Some(req) => match req.payload {
-                EffectorMessage::Execute(DisplayEffect::Dim) => {
-                    match dim_screen(brightness_controller).await {
-                        Ok(b) => {
-                            old_brightness = Some(b);
-                            req.respond(Ok(())).unwrap();
-                        }
-                        Err(err) => req.respond(Err(err)).unwrap(),
-                    }
-                }
-                EffectorMessage::Execute(DisplayEffect::TurnOff) => {
-                    req.respond(set_dpms_level(ds::DPMSLevel::Off, ds_controller).await)
-                        .unwrap();
-                }
-                EffectorMessage::Rollback(DisplayEffect::Dim) => {
-                    if let Some(b) = old_brightness {
-                        req.respond(brightness_controller.set_brightness(b).await.and(Ok(())))
-                            .unwrap();
-                    } else {
-                        log::error!("Brightness rollback called without previous dimming.");
-                        req.respond(Ok(())).unwrap();
-                    }
-                    old_brightness = None;
-                }
-                EffectorMessage::Rollback(DisplayEffect::TurnOff) => {
-                    req.respond(set_dpms_level(ds::DPMSLevel::On, ds_controller).await)
-                        .unwrap();
-                }
+impl<B: BrightnessController, D: ds::DisplayServerController> DisplayEffector<B, D> {
+    pub fn new(brightness_controller: B, ds_controller: D) -> DisplayEffector<B, D> {
+        DisplayEffector {
+            brightness_controller,
+            ds_controller,
+            original_configuration: ServerConfiguration {
+                level: Some(ds::DPMSLevel::On),
+                timeouts: ds::DPMSTimeouts::new(0, 0, 0),
             },
-            None => {
-                log::info!("Terminating");
-                if let Some(b) = old_brightness {
-                    if let Err(e) = brightness_controller.set_brightness(b).await {
-                        log::error!("Failed to reset brightness on termination: {}", e);
-                    }
-                }
-                return;
-            }
+            previous_brightness: None,
+        }
+    }
+
+    async fn dim_screen(&self) -> Result<usize> {
+        let current_brightness = self.brightness_controller.get_brightness().await?;
+        self.brightness_controller
+            .set_brightness(current_brightness / 2)
+            .await?;
+        Ok(current_brightness)
+    }
+
+    async fn set_dpms_level(&self, level: ds::DPMSLevel) -> Result<()> {
+        let sent_controller = self.ds_controller.clone();
+        tokio::task::spawn_blocking(move || sent_controller.set_dpms_level(level)).await?
+    }
+
+    async fn prepare_dpms(&self) {
+        let config = ServerConfiguration {
+            level: Some(ds::DPMSLevel::On),
+            timeouts: ds::DPMSTimeouts::new(0, 0, 0),
+        };
+        if let Err(e) = config.apply(&self.ds_controller).await {
+            log::error!("Couldn't prepare DPMS for display effector: {}", e);
         }
     }
 }
 
-async fn dim_screen<B: BrightnessController>(brightness_controller: &B) -> Result<usize> {
-    let current_brightness = brightness_controller.get_brightness().await?;
-    brightness_controller
-        .set_brightness(current_brightness / 2)
-        .await?;
-    Ok(current_brightness)
-}
+#[async_trait]
+impl<B: BrightnessController, D: ds::DisplayServerController>
+    Actor<EffectorMessage<DisplayEffect>, ()> for DisplayEffector<B, D>
+{
+    fn get_name(&self) -> String {
+        "DisplayEffector".to_owned()
+    }
 
-async fn set_dpms_level<D: DisplayServerController>(
-    level: ds::DPMSLevel,
-    ds_controller: &D,
-) -> Result<()> {
-    let sent_controller = ds_controller.clone();
-    tokio::task::spawn_blocking(move || sent_controller.set_dpms_level(level)).await?
-}
+    async fn handle_message(&mut self, payload: EffectorMessage<DisplayEffect>) -> Result<()> {
+        match payload {
+            EffectorMessage::Execute(DisplayEffect::Dim) => {
+                self.previous_brightness = Some(self.dim_screen().await?);
+            }
+            EffectorMessage::Execute(DisplayEffect::TurnOff) => {
+                self.set_dpms_level(ds::DPMSLevel::Off).await?;
+            }
+            EffectorMessage::Rollback(DisplayEffect::Dim) => {
+                if let Some(b) = self.previous_brightness {
+                    self.brightness_controller.set_brightness(b).await?;
+                } else {
+                    return Err(anyhow!(
+                        "Brightness rollback called without previous dimming."
+                    ));
+                }
+                self.previous_brightness = None;
+            }
+            EffectorMessage::Rollback(DisplayEffect::TurnOff) => {
+                self.set_dpms_level(ds::DPMSLevel::On).await?
+            }
+        };
+        Ok(())
+    }
 
-async fn prepare_dpms<D: DisplayServerController>(d: &D) {
-    let config = ServerConfiguration {
-        level: Some(ds::DPMSLevel::On),
-        timeouts: ds::DPMSTimeouts::new(0, 0, 0),
-    };
-    if let Err(e) = config.apply(d).await {
-        log::error!("Couldn't prepare DPMS for display effector: {}", e);
+    async fn initialize(&mut self) -> Result<()> {
+        self.original_configuration = ServerConfiguration::fetch(&self.ds_controller).await?;
+        self.prepare_dpms().await;
+        Ok(())
+    }
+
+    async fn tear_down(&mut self) -> Result<()> {
+        self.original_configuration
+            .apply(&self.ds_controller)
+            .await?;
+        if let Some(b) = self.previous_brightness {
+            self.brightness_controller.set_brightness(b).await?;
+        }
+        Ok(())
     }
 }
