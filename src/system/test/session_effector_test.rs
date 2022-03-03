@@ -1,6 +1,6 @@
 use crate::armaf::{spawn_actor, EffectorMessage};
 use crate::external::dbus;
-use crate::system::logind_effector;
+use crate::system::session_effector;
 use anyhow::Result;
 use logind_zbus::{manager, session};
 use std::process;
@@ -14,23 +14,23 @@ async fn test_idle_hints() {
     let mut factory = dbus::ConnectionFactory::new();
     let test_connection = factory.get_system().await.unwrap();
     let session_proxy = get_session_proxy(&test_connection).await.unwrap();
-    let port = spawn_actor(logind_effector::LogindEffector::new(
+    let port = spawn_actor(session_effector::SessionEffector::new(
         factory.get_system().await.unwrap(),
     ))
     .await
     .expect("Actor initialization failed");
     port.request(EffectorMessage::Execute(
-        logind_effector::LogindEffect::IdleHint,
+        session_effector::SessionEffect::IdleHint,
     ))
     .await
     .unwrap();
     assert_eq!(session_proxy.idle_hint().await.unwrap(), true);
     port.request(EffectorMessage::Rollback(
-        logind_effector::LogindEffect::IdleHint,
+        session_effector::SessionEffect::IdleHint,
     ))
     .await
     .unwrap();
-    sleep(Duration::from_millis(200)); // See the comment in logind_effector#process_message
+    sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
     assert_eq!(session_proxy.idle_hint().await.unwrap(), false);
 }
 
@@ -40,23 +40,23 @@ async fn test_locked_hints() {
     let mut factory = dbus::ConnectionFactory::new();
     let test_connection = factory.get_system().await.unwrap();
     let session_proxy = get_session_proxy(&test_connection).await.unwrap();
-    let port = spawn_actor(logind_effector::LogindEffector::new(
+    let port = spawn_actor(session_effector::SessionEffector::new(
         factory.get_system().await.unwrap(),
     ))
     .await
     .expect("Actor initialization failed");
     port.request(EffectorMessage::Execute(
-        logind_effector::LogindEffect::LockedHint,
+        session_effector::SessionEffect::LockedHint,
     ))
     .await
     .unwrap();
     assert_eq!(session_proxy.locked_hint().await.unwrap(), true);
     port.request(EffectorMessage::Rollback(
-        logind_effector::LogindEffect::LockedHint,
+        session_effector::SessionEffect::LockedHint,
     ))
     .await
     .unwrap();
-    sleep(Duration::from_millis(200)); // See the comment in logind_effector#process_message
+    sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
     assert_eq!(session_proxy.locked_hint().await.unwrap(), false);
 }
 

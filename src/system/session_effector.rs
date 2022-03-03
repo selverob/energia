@@ -4,19 +4,19 @@ use async_trait::async_trait;
 use logind_zbus::{self, session::SessionProxy};
 use std::process;
 
-pub enum LogindEffect {
+pub enum SessionEffect {
     IdleHint,
     LockedHint,
 }
 
-pub struct LogindEffector {
+pub struct SessionEffector {
     connection: zbus::Connection,
     session_proxy: Option<SessionProxy<'static>>,
 }
 
-impl LogindEffector {
-    pub fn new(connection: zbus::Connection) -> LogindEffector {
-        LogindEffector {
+impl SessionEffector {
+    pub fn new(connection: zbus::Connection) -> SessionEffector {
+        SessionEffector {
             connection,
             session_proxy: None,
         }
@@ -24,9 +24,9 @@ impl LogindEffector {
 }
 
 #[async_trait]
-impl Actor<EffectorMessage<LogindEffect>, ()> for LogindEffector {
+impl Actor<EffectorMessage<SessionEffect>, ()> for SessionEffector {
     fn get_name(&self) -> String {
-        "LogindEffector".to_owned()
+        "SessionEffector".to_owned()
     }
 
     async fn initialize(&mut self) -> Result<()> {
@@ -42,13 +42,13 @@ impl Actor<EffectorMessage<LogindEffect>, ()> for LogindEffector {
         Ok(())
     }
 
-    async fn handle_message(&mut self, payload: EffectorMessage<LogindEffect>) -> Result<()> {
+    async fn handle_message(&mut self, payload: EffectorMessage<SessionEffect>) -> Result<()> {
         let (effect, argument) = match payload {
             EffectorMessage::Execute(a) => (a, true),
             EffectorMessage::Rollback(a) => (a, false),
         };
         match effect {
-            LogindEffect::IdleHint => {
+            SessionEffect::IdleHint => {
                 log::info!("Setting idle hint in logind to {}", argument);
                 // TODO: It seems like sometimes the changes are not immediately
                 // visible to reading methods. Should we maybe try to wait until
@@ -60,7 +60,7 @@ impl Actor<EffectorMessage<LogindEffect>, ()> for LogindEffector {
                     .set_idle_hint(argument)
                     .await?)
             }
-            LogindEffect::LockedHint => {
+            SessionEffect::LockedHint => {
                 log::info!("Setting locked hint in logind to {}", argument);
                 // TODO: It seems like sometimes the changes are not immediately
                 // visible to reading methods. Should we maybe try to wait until
