@@ -5,7 +5,6 @@ use crate::external::brightness::BrightnessController;
 use crate::external::display_server as ds;
 use crate::external::display_server::DisplayServer;
 use crate::external::display_server::DisplayServerController;
-use crate::system::display_effector::DisplayEffect;
 use std::time::Duration;
 
 #[tokio::test]
@@ -27,8 +26,6 @@ async fn test_original_config_saving() {
     .await
     .expect("Actor initialization failed");
 
-    tokio::time::sleep(Duration::from_millis(250)).await;
-
     // Test if the display effector sets its own state when it's initialized
     assert_eq!(
         ds_controller.get_dpms_level().unwrap(),
@@ -43,7 +40,7 @@ async fn test_original_config_saving() {
     // termination if it wasn't changed by itself
     brightness.set_brightness(45).await.unwrap();
 
-    // Test if the display effector resets the state to original when it's initialized
+    // Test if the display effector resets the state to original when it's terminated
     drop(port);
     assert_eq!(
         ds_controller.get_dpms_level().unwrap(),
@@ -68,12 +65,12 @@ async fn test_basic_flow() {
     ))
     .await
     .expect("Actor initialization failed");
-    port.request(EffectorMessage::Execute(DisplayEffect::Dim))
+    port.request(EffectorMessage::Execute)
         .await
         .expect("Failed to dim display");
     assert_eq!(brightness.get_brightness().await.unwrap(), 40);
 
-    port.request(EffectorMessage::Execute(DisplayEffect::TurnOff))
+    port.request(EffectorMessage::Execute)
         .await
         .expect("Failed to turn display off");
     assert_eq!(
@@ -81,7 +78,7 @@ async fn test_basic_flow() {
         Some(ds::DPMSLevel::Off)
     );
 
-    port.request(EffectorMessage::Rollback(DisplayEffect::TurnOff))
+    port.request(EffectorMessage::Rollback)
         .await
         .expect("Failed to turn display on");
     assert_eq!(
@@ -90,7 +87,7 @@ async fn test_basic_flow() {
     );
     assert_eq!(brightness.get_brightness().await.unwrap(), 40);
 
-    port.request(EffectorMessage::Rollback(DisplayEffect::Dim))
+    port.request(EffectorMessage::Rollback)
         .await
         .expect("Failed to undim display");
     assert_eq!(brightness.get_brightness().await.unwrap(), 80);
@@ -107,7 +104,7 @@ async fn test_undim_on_termination() {
     ))
     .await
     .expect("Actor initialization failed");
-    port.request(EffectorMessage::Execute(DisplayEffect::Dim))
+    port.request(EffectorMessage::Execute)
         .await
         .expect("Failed to dim display");
     assert_eq!(brightness.get_brightness().await.unwrap(), 40);
@@ -131,19 +128,16 @@ async fn test_failing_display_server() {
 
     display.set_failure_mode(true);
 
-    port.request(EffectorMessage::Execute(DisplayEffect::Dim))
+    port.request(EffectorMessage::Execute)
         .await
         .expect("Failed to dim display");
     assert_eq!(brightness.get_brightness().await.unwrap(), 40);
 
-    port.request(EffectorMessage::Execute(DisplayEffect::TurnOff))
-        .await
-        .expect_err("No error reported on failing display server controller");
-    port.request(EffectorMessage::Rollback(DisplayEffect::TurnOff))
+    port.request(EffectorMessage::Execute)
         .await
         .expect_err("No error reported on failing display server controller");
 
-    port.request(EffectorMessage::Rollback(DisplayEffect::Dim))
+    port.request(EffectorMessage::Rollback)
         .await
         .expect("Failed to undim display");
     assert_eq!(brightness.get_brightness().await.unwrap(), 80);
@@ -153,7 +147,6 @@ async fn test_failing_display_server() {
 async fn test_failing_brightness_controller() {
     let brightness = bs::mock::MockBrightnessController::new(80);
     let display = ds::mock::Interface::new(-1);
-    let ds_controller = display.get_controller();
     let port = spawn_actor(display_effector::DisplayEffector::new(
         brightness.clone(),
         display.get_controller(),
@@ -163,37 +156,21 @@ async fn test_failing_brightness_controller() {
 
     brightness.set_failure_mode(true);
 
-    port.request(EffectorMessage::Execute(DisplayEffect::Dim))
+    port.request(EffectorMessage::Execute)
         .await
         .expect_err("No error returned from failing controller");
 
-    port.request(EffectorMessage::Execute(DisplayEffect::TurnOff))
+    port.request(EffectorMessage::Rollback)
         .await
-        .expect("Failed to turn display off");
-    assert_eq!(
-        ds_controller.get_dpms_level().unwrap(),
-        Some(ds::DPMSLevel::Off)
-    );
-
-    port.request(EffectorMessage::Rollback(DisplayEffect::TurnOff))
-        .await
-        .expect("Failed to turn display on");
-    assert_eq!(
-        ds_controller.get_dpms_level().unwrap(),
-        Some(ds::DPMSLevel::On)
-    );
-
-    port.request(EffectorMessage::Rollback(DisplayEffect::Dim))
-        .await
-        .expect_err("An error should be returned from undim if no dimming occurred");
+        .expect_err("Rolling back from initial state succeeded");
 
     brightness.set_failure_mode(false);
-    port.request(EffectorMessage::Execute(DisplayEffect::Dim))
+    port.request(EffectorMessage::Execute)
         .await
         .expect("Dimming failed");
     assert_eq!(brightness.get_brightness().await.unwrap(), 40);
     brightness.set_failure_mode(true);
-    port.request(EffectorMessage::Rollback(DisplayEffect::Dim))
+    port.request(EffectorMessage::Rollback)
         .await
         .expect_err("No error occurred even when undim failed");
 }

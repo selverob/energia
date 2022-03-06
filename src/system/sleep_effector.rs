@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -24,7 +24,7 @@ impl SleepEffector {
 }
 
 #[async_trait]
-impl Actor<EffectorMessage<()>, ()> for SleepEffector {
+impl Actor<EffectorMessage, ()> for SleepEffector {
     fn get_name(&self) -> String {
         "SleepEffector".to_owned()
     }
@@ -36,13 +36,13 @@ impl Actor<EffectorMessage<()>, ()> for SleepEffector {
         Ok(())
     }
 
-    async fn handle_message(&mut self, payload: EffectorMessage<()>) -> Result<()> {
+    async fn handle_message(&mut self, payload: EffectorMessage) -> Result<()> {
         match payload {
-            EffectorMessage::Execute(()) => {
+            EffectorMessage::Execute => {
                 log::info!("Putting system to sleep");
                 self.manager_proxy.as_ref().unwrap().suspend(false).await?;
             }
-            EffectorMessage::Rollback(()) => {
+            EffectorMessage::Rollback => {
                 loop {
                     let stream_val = self.sleep_signal_stream.as_mut().unwrap().next().await;
                     match stream_val {
@@ -51,6 +51,8 @@ impl Actor<EffectorMessage<()>, ()> for SleepEffector {
                             // The stream may still contain notifications about going to sleep (start = true)
                             // we want to see if we have woken up from sleep.
                             if !signal.args()?.start {
+                                // The signal is sent as the computer is preparing to go to sleep (maybe?)
+                                // We want it to actually go to sleep, thus the wait.
                                 tokio::time::sleep(Duration::from_millis(1000)).await;
                                 return Ok(());
                             } else {

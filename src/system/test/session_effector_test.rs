@@ -10,7 +10,7 @@ use tokio;
 
 #[tokio::test]
 #[ignore]
-async fn test_idle_hints() {
+async fn test_happy_path() {
     let mut factory = dbus::ConnectionFactory::new();
     let test_connection = factory.get_system().await.unwrap();
     let session_proxy = get_session_proxy(&test_connection).await.unwrap();
@@ -19,45 +19,31 @@ async fn test_idle_hints() {
     ))
     .await
     .expect("Actor initialization failed");
-    port.request(EffectorMessage::Execute(
-        session_effector::SessionEffect::IdleHint,
-    ))
-    .await
-    .unwrap();
+    port.request(EffectorMessage::Execute).await.unwrap();
+    sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
     assert_eq!(session_proxy.idle_hint().await.unwrap(), true);
-    port.request(EffectorMessage::Rollback(
-        session_effector::SessionEffect::IdleHint,
-    ))
-    .await
-    .unwrap();
+
+    port.request(EffectorMessage::Execute).await.unwrap();
+    sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
+    assert_eq!(session_proxy.locked_hint().await.unwrap(), true);
+
+    port.request(EffectorMessage::Execute)
+        .await
+        .expect_err("Effector allowed state machine overflow");
+
+    port.request(EffectorMessage::Rollback).await.unwrap();
+    sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
+    assert_eq!(session_proxy.idle_hint().await.unwrap(), true);
+    assert_eq!(session_proxy.locked_hint().await.unwrap(), false);
+
+    port.request(EffectorMessage::Rollback).await.unwrap();
     sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
     assert_eq!(session_proxy.idle_hint().await.unwrap(), false);
-}
-
-#[tokio::test]
-#[ignore]
-async fn test_locked_hints() {
-    let mut factory = dbus::ConnectionFactory::new();
-    let test_connection = factory.get_system().await.unwrap();
-    let session_proxy = get_session_proxy(&test_connection).await.unwrap();
-    let port = spawn_actor(session_effector::SessionEffector::new(
-        factory.get_system().await.unwrap(),
-    ))
-    .await
-    .expect("Actor initialization failed");
-    port.request(EffectorMessage::Execute(
-        session_effector::SessionEffect::LockedHint,
-    ))
-    .await
-    .unwrap();
-    assert_eq!(session_proxy.locked_hint().await.unwrap(), true);
-    port.request(EffectorMessage::Rollback(
-        session_effector::SessionEffect::LockedHint,
-    ))
-    .await
-    .unwrap();
-    sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
     assert_eq!(session_proxy.locked_hint().await.unwrap(), false);
+
+    port.request(EffectorMessage::Rollback)
+        .await
+        .expect_err("Effector allowed state machine underflow");
 }
 
 async fn get_session_proxy<'c>(

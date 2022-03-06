@@ -1,9 +1,7 @@
-use crate::armaf::{self, Actor, ActorPort, Request};
+use crate::armaf::Actor;
 use anyhow::Result;
 use async_trait::async_trait;
-use log;
-use logind_zbus::manager::{self, ManagerProxy};
-use tokio::sync::mpsc::Receiver;
+use logind_zbus::manager::{self};
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct GetInhibitions;
 

@@ -6,7 +6,7 @@ use std::path::Path;
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 use zbus;
-use zbus::zvariant::{ObjectPath, OwnedObjectPath};
+use zbus::zvariant::OwnedObjectPath;
 
 /// A [BrightnessController] which uses the kernel's /sys/class/backlight device
 /// class to control the display brightness.

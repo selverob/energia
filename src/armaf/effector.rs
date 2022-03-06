@@ -3,10 +3,10 @@
 use super::{ActorPort, Request};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EffectorMessage<T> {
-    Execute(T),
-    Rollback(T),
+pub enum EffectorMessage {
+    Execute,
+    Rollback,
 }
 
-pub type EffectorPort<T> = ActorPort<EffectorMessage<T>, (), anyhow::Error>;
-pub type EffectorRequest<T> = Request<EffectorMessage<T>, (), anyhow::Error>;
+pub type EffectorPort = ActorPort<EffectorMessage, (), anyhow::Error>;
+pub type EffectorRequest = Request<EffectorMessage, (), anyhow::Error>;
