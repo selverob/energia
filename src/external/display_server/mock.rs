@@ -1,6 +1,5 @@
 use super::{DisplayServer, DisplayServerController, SystemState};
 use anyhow::Result;
-use std::cell::RefMut;
 use std::io::{Error, ErrorKind};
 use std::{
     cell::RefCell,

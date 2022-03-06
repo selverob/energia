@@ -11,7 +11,7 @@ async fn test_backlight_setting() {
 
 #[tokio::test]
 async fn test_errors() {
-    let mut controller = mock::MockBrightnessController::new(100);
+    let controller = mock::MockBrightnessController::new(100);
     controller.set_failure_mode(true);
     assert!(controller.get_brightness().await.is_err());
     assert!(controller.set_brightness(42).await.is_err());
