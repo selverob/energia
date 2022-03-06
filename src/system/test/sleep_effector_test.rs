@@ -21,12 +21,12 @@ async fn test_idle_hints() {
     ))
     .await
     .expect("Failed to start actor");
-    port.request(EffectorMessage::Execute(()))
+    port.request(EffectorMessage::Execute)
         .await
         .expect("Failed to put computer to sleep");
     // Instant:: is a sythetic monotonic clock - it stops in sleep, so it will always just give you 5 seconds
     let start = SystemTime::now();
-    port.request(EffectorMessage::Rollback(()))
+    port.request(EffectorMessage::Rollback)
         .await
         .expect("Failed to put computer to sleep");
     let elapsed_time = start.elapsed().unwrap();
