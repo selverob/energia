@@ -160,7 +160,6 @@ async fn test_failing_brightness_controller() {
         .await
         .expect_err("No error returned from failing controller");
 
-
     port.request(EffectorMessage::Rollback)
         .await
         .expect_err("Rolling back from initial state succeeded");

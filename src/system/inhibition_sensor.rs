@@ -1,4 +1,4 @@
-use crate::armaf::{Actor};
+use crate::armaf::Actor;
 use anyhow::Result;
 use async_trait::async_trait;
 use logind_zbus::manager::{self};

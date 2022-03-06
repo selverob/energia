@@ -103,8 +103,8 @@ impl<B: BrightnessController, D: ds::DisplayServerController> DisplayEffector<B,
 }
 
 #[async_trait]
-impl<B: BrightnessController, D: ds::DisplayServerController>
-    Actor<EffectorMessage, ()> for DisplayEffector<B, D>
+impl<B: BrightnessController, D: ds::DisplayServerController> Actor<EffectorMessage, ()>
+    for DisplayEffector<B, D>
 {
     fn get_name(&self) -> String {
         "DisplayEffector".to_owned()

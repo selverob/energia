@@ -10,37 +10,40 @@ async fn test_happy_path() {
     let sequence = vec![10, 20, 30];
     let port = spawn_actor(idleness_effector::IdlenessEffector::new(
         iface.get_controller(),
-        &sequence
+        &sequence,
     ))
     .await
     .expect("Actor initialization failed");
     for timeout in sequence.iter() {
         port.request(EffectorMessage::Execute)
-        .await
-        .expect("Idleness effector failed to set idleness");
+            .await
+            .expect("Idleness effector failed to set idleness");
         assert_eq!(setter.get_idleness_timeout().unwrap(), *timeout);
     }
 
     port.request(EffectorMessage::Execute)
         .await
         .expect_err("Idleness effector overflowed timeout sequence");
-    
+
     for i in 1..sequence.len() {
         port.request(EffectorMessage::Rollback)
             .await
             .expect("Idleness effector failed to roll back");
-        assert_eq!(setter.get_idleness_timeout().unwrap(), sequence[sequence.len() - 1 - i]);
+        assert_eq!(
+            setter.get_idleness_timeout().unwrap(),
+            sequence[sequence.len() - 1 - i]
+        );
     }
 
     port.request(EffectorMessage::Rollback)
-            .await
-            .expect("Idleness effector failed to roll back");
-        assert_eq!(setter.get_idleness_timeout().unwrap(), 600);
-    
-        port.request(EffectorMessage::Rollback)
+        .await
+        .expect("Idleness effector failed to roll back");
+    assert_eq!(setter.get_idleness_timeout().unwrap(), 600);
+
+    port.request(EffectorMessage::Rollback)
         .await
         .expect_err("Idleness effector underflowed timeout sequence");
-    
+
     drop(port);
 }
 
@@ -51,7 +54,7 @@ async fn test_error_handling() {
     let setter = iface.get_controller();
     let port = spawn_actor(idleness_effector::IdlenessEffector::new(
         iface.get_controller(),
-        &vec![20, 30]
+        &vec![20, 30],
     ))
     .await
     .expect("Actor initialization failed");
