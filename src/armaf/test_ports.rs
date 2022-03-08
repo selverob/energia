@@ -64,19 +64,6 @@ async fn test_request_errors() {
     }
 }
 
-#[tokio::test]
-async fn test_error_loop() {
-    let port = spawn_error_loop();
-    let response = port.request(()).await;
-    assert!(response.is_err());
-    if let super::ActorRequestError::ActorError(e) = response.as_ref().unwrap_err() {
-        let text = format!("{}", e);
-        assert_eq!(text, "operation failed successfully");
-    } else {
-        panic!("Incorrect ActorRequestError variant: {:?}", response);
-    }
-}
-
 enum TestActorMessage {
     Increment,
     // Don't use this in your code! Actors should terminate on their own, used just for testing.
@@ -108,14 +95,6 @@ fn spawn_two_increments_one_error() -> ports::ActorPort<TestActorMessage, usize,
                 TestActorMessage::Terminate => return,
             }
         }
-    });
-    port
-}
-
-fn spawn_error_loop() -> ports::ActorPort<(), (), anyhow::Error> {
-    let (port, rx) = ports::ActorPort::make();
-    tokio::spawn(async move {
-        super::error_loop(rx, "operation failed successfully".to_string()).await;
     });
     port
 }

@@ -119,20 +119,3 @@ impl<P, R, E> ActorPort<P, R, E> {
         }
     }
 }
-
-pub async fn error_loop<P, R>(
-    mut rx: mpsc::Receiver<Request<P, R, anyhow::Error>>,
-    error_message: String,
-) {
-    loop {
-        match rx.recv().await {
-            None => {
-                log::info!("Stopping");
-                return;
-            }
-            Some(req) => {
-                req.respond(Err(anyhow::anyhow!(error_message.clone())));
-            }
-        }
-    }
-}

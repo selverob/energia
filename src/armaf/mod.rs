@@ -12,9 +12,9 @@
 //! penalty. It will probably be negligible for your use-case, but there is
 //! still the option of working with [ActorPort]s directly.
 
-mod server;
 mod effector;
 mod ports;
+mod server;
 
 #[doc(inline)]
 pub use ports::*;
