@@ -1,4 +1,4 @@
-use crate::armaf::spawn_actor;
+use crate::armaf::spawn_server;
 use crate::external::dbus::ConnectionFactory;
 use crate::system::inhibition_sensor;
 use logind_zbus::manager;
@@ -9,7 +9,7 @@ async fn test_inhibition_sensor() {
     let mut factory = ConnectionFactory::new();
     let test_connection = factory.get_system().await.unwrap();
     let manager_proxy = manager::ManagerProxy::new(&test_connection).await.unwrap();
-    let port = spawn_actor(inhibition_sensor::InhibitionSensor::new(
+    let port = spawn_server(inhibition_sensor::InhibitionSensor::new(
         factory.get_system().await.unwrap(),
     ))
     .await

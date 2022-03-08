@@ -30,6 +30,7 @@ impl WatchAdapter {
                     Ok(()) = source_channel.changed() => {
                         let to_forward = (*source_channel.borrow()).clone();
                         if let Err(e) = destination_port.request(to_forward).await {
+                            // TODO: Maybe return a channel on which errors can be consumed?
                             log::error!("Destination actor returned an error: {:?}", e);
                         }
                     }

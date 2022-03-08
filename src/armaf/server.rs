@@ -1,4 +1,4 @@
-//! Higher level abstractions on top of [super::ports]
+//! Server abstraction on top of [super::ports]
 
 use super::ActorPort;
 use anyhow::{anyhow, Result};
@@ -6,40 +6,41 @@ use async_trait::async_trait;
 use log;
 use tokio::sync::oneshot;
 
-/// A trait which allows you to write actor code in a structured way. Actors run
-/// in Tokio tasks and have three lifecycle phases.
+/// A trait which allows you to write server code for Server-like Actors (which
+/// just receive requests on their ActorPorts and then respond to them) in a
+/// structured way. Servers run in Tokio tasks and have three lifecycle phases.
 ///
-/// Initialization occurs first and the [spawn_actor] function doesn't return
+/// Initialization occurs first and the [spawn_server] function doesn't return
 /// until it has finished, either successfully or with an error.
 ///
 /// Then, in handling phase, handle_message is invoked to process each request
-/// sent to the [ActorPort] returned by [spawn_actor].
+/// sent to the [ActorPort] returned by [spawn_server].
 ///
-/// After all [ActorPort]s for the actor get dropped, the teardown phase is
-/// entered. Actor can perform any asynchronous clean up tasks it needs to do.
+/// After all [ActorPort]s for the server get dropped, the teardown phase is
+/// entered. Server can perform any asynchronous clean up tasks it needs to do.
 /// For example, it can return a system component to a state in which it was
-/// before the actor took control of it (for example, reset the display
+/// before the server took control of it (for example, reset the display
 /// brightness it was controlling). Keep in mind that this method is only
 /// supposed to be used for asynchronous clean up tasks. All other kinds of
 /// cleanup should be performed using an impl of [Drop].
 ///
 /// # Examples
 ///
-/// An example actor implemented using this trait:
+/// An example server implemented using this trait:
 ///
 /// ```rust
-/// struct TestActor {
+/// struct TestServer{
 ///     current_number: usize,
 ///     fail_at: usize,
 ///     fail_initialization: bool,
 ///     drop_notifier: mpsc::Sender<()>,
 /// }
 ///
-/// impl TestActor {
+/// impl TestServer{
 ///     fn new(fail_at: usize, fail_initialization: bool) -> (TestActor, mpsc::Receiver<()>) {
 ///         let (drop_sender, drop_receiver) = mpsc::channel(1);
 ///         (
-///             TestActor {
+///             TestServer{
 ///                 current_number: 0,
 ///                 drop_notifier: drop_sender,
 ///                 fail_at,
@@ -51,9 +52,9 @@ use tokio::sync::oneshot;
 /// }
 ///
 /// #[async_trait]
-/// impl Actor<(), usize> for TestActor {
+/// impl Server<(), usize> for TestServer{
 ///     fn get_name(&self) -> String {
-///         "test_actor".to_owned()
+///         "test_server".to_owned()
 ///     }
 ///
 ///     async fn handle_message(&mut self, _: ()) -> Result<usize> {
@@ -79,8 +80,8 @@ use tokio::sync::oneshot;
 /// }
 /// ```
 #[async_trait]
-pub trait Actor<P, R>: Send + 'static {
-    /// Returns the name of the Actor, which is used in logging messages
+pub trait Server<P, R>: Send + 'static {
+    /// Returns the name of the Server, which is used in logging messages
     fn get_name(&self) -> String;
 
     /// Handle a request sent to the [ActorPort] of the Actor.
@@ -89,15 +90,15 @@ pub trait Actor<P, R>: Send + 'static {
     /// [super::Request<P, R, E>::respond] method.
     async fn handle_message(&mut self, payload: P) -> Result<R>;
 
-    /// Performs actor initialization tasks.
+    /// Performs server initialization tasks.
     ///
     /// An error in this method will cause
-    /// [spawn_actor] to fail with the error. Default implementation just returns `Ok(())`
+    /// [spawn_server] to fail with the error. Default implementation just returns `Ok(())`
     async fn initialize(&mut self) -> Result<()> {
         Ok(())
     }
 
-    /// Perform actor teardown / cleanup tasks.
+    /// Perform server teardown / cleanup tasks.
     ///
     /// Since this method is invoked at a non-deterministic time (after the
     /// Actor's [ActorPort]s are dropped), the errors are only logged using
@@ -107,28 +108,28 @@ pub trait Actor<P, R>: Send + 'static {
     }
 }
 
-/// Starts a task for the given [Actor] and handles low-level details of request
+/// Starts a task for the given [Server] and handles low-level details of request
 /// receiving and response sending.
 ///
-/// See [Actor] for more information about when its methods are called.
+/// See [Server] for more information about when its methods are called.
 ///
-/// This method waits for the initialization of the actor to be done before
+/// This method waits for the initialization of the server to be done before
 /// returning the [ActorPort]. If initialization fails, an error is returned
 /// instead.
-pub async fn spawn_actor<P, R>(
-    mut actor: impl Actor<P, R>,
+pub async fn spawn_server<P, R>(
+    mut server: impl Server<P, R>,
 ) -> Result<ActorPort<P, R, anyhow::Error>>
 where
     P: Send + 'static,
     R: Send + 'static,
 {
-    let name = actor.get_name();
+    let name = server.get_name();
     log::debug!("{} spawning", name);
     let (port, mut rx) = ActorPort::make();
     let (initialization_sender, initialization_receiver) = oneshot::channel::<Result<()>>();
     tokio::spawn(async move {
-        let name = actor.get_name();
-        let init_result = actor.initialize().await;
+        let name = server.get_name();
+        let init_result = server.initialize().await;
         let had_init_error = init_result.is_err();
         initialization_sender
             .send(init_result)
@@ -140,7 +141,7 @@ where
         loop {
             match rx.recv().await {
                 Some(req) => {
-                    let res = actor.handle_message(req.payload).await;
+                    let res = server.handle_message(req.payload).await;
                     if let Err(e) = &res {
                         log::error!("{} message handler returned error: {}", name, e);
                     }
@@ -153,7 +154,7 @@ where
                 }
                 None => {
                     log::debug!("{} stopping", name);
-                    if let Err(e) = actor.tear_down().await {
+                    if let Err(e) = server.tear_down().await {
                         log::error!("{} failed to tear down: {}", name, e);
                     }
                     return;

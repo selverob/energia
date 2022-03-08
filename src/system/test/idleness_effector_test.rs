@@ -1,4 +1,4 @@
-use crate::armaf::{spawn_actor, EffectorMessage};
+use crate::armaf::{spawn_server, EffectorMessage};
 use crate::external::display_server::{mock, DisplayServer, DisplayServerController};
 use crate::system::idleness_effector;
 use tokio;
@@ -8,7 +8,7 @@ async fn test_happy_path() {
     let iface = mock::Interface::new(600);
     let setter = iface.get_controller();
     let sequence = vec![10, 20, 30];
-    let port = spawn_actor(idleness_effector::IdlenessEffector::new(
+    let port = spawn_server(idleness_effector::IdlenessEffector::new(
         iface.get_controller(),
         &sequence,
     ))
@@ -52,7 +52,7 @@ async fn test_error_handling() {
     let iface = mock::Interface::new(600);
     iface.set_failure_mode(true);
     let setter = iface.get_controller();
-    let port = spawn_actor(idleness_effector::IdlenessEffector::new(
+    let port = spawn_server(idleness_effector::IdlenessEffector::new(
         iface.get_controller(),
         &vec![20, 30],
     ))

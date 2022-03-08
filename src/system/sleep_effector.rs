@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use logind_zbus::manager::{ManagerProxy, PrepareForSleepStream};
 use tokio_stream::StreamExt;
 
-use crate::armaf::{Actor, EffectorMessage};
+use crate::armaf::{Server, EffectorMessage};
 
 pub struct SleepEffector {
     connection: zbus::Connection,
@@ -24,7 +24,7 @@ impl SleepEffector {
 }
 
 #[async_trait]
-impl Actor<EffectorMessage, ()> for SleepEffector {
+impl Server<EffectorMessage, ()> for SleepEffector {
     fn get_name(&self) -> String {
         "SleepEffector".to_owned()
     }

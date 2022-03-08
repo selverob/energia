@@ -1,5 +1,5 @@
 use super::super::display_effector;
-use crate::armaf::{spawn_actor, EffectorMessage};
+use crate::armaf::{spawn_server, EffectorMessage};
 use crate::external::brightness as bs;
 use crate::external::brightness::BrightnessController;
 use crate::external::display_server as ds;
@@ -19,7 +19,7 @@ async fn test_original_config_saving() {
     ds_controller
         .set_dpms_timeouts(ds::DPMSTimeouts::new(42, 43, 44))
         .unwrap();
-    let port = spawn_actor(display_effector::DisplayEffector::new(
+    let port = spawn_server(display_effector::DisplayEffector::new(
         brightness.clone(),
         display.get_controller(),
     ))
@@ -59,7 +59,7 @@ async fn test_basic_flow() {
     let display = ds::mock::Interface::new(-1);
     let ds_controller = display.get_controller();
 
-    let port = spawn_actor(display_effector::DisplayEffector::new(
+    let port = spawn_server(display_effector::DisplayEffector::new(
         brightness.clone(),
         display.get_controller(),
     ))
@@ -98,7 +98,7 @@ async fn test_undim_on_termination() {
     let brightness = bs::mock::MockBrightnessController::new(80);
     let display = ds::mock::Interface::new(-1);
 
-    let port = spawn_actor(display_effector::DisplayEffector::new(
+    let port = spawn_server(display_effector::DisplayEffector::new(
         brightness.clone(),
         display.get_controller(),
     ))
@@ -119,7 +119,7 @@ async fn test_failing_display_server() {
     let display = ds::mock::Interface::new(-1);
     let ds_controller = display.get_controller();
     ds_controller.set_dpms_level(ds::DPMSLevel::On).unwrap();
-    let port = spawn_actor(display_effector::DisplayEffector::new(
+    let port = spawn_server(display_effector::DisplayEffector::new(
         brightness.clone(),
         display.get_controller(),
     ))
@@ -147,7 +147,7 @@ async fn test_failing_display_server() {
 async fn test_failing_brightness_controller() {
     let brightness = bs::mock::MockBrightnessController::new(80);
     let display = ds::mock::Interface::new(-1);
-    let port = spawn_actor(display_effector::DisplayEffector::new(
+    let port = spawn_server(display_effector::DisplayEffector::new(
         brightness.clone(),
         display.get_controller(),
     ))

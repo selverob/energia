@@ -1,4 +1,4 @@
-use crate::armaf::{Actor, EffectorMessage};
+use crate::armaf::{Server, EffectorMessage};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use log;
@@ -33,7 +33,7 @@ impl SessionEffector {
 }
 
 #[async_trait]
-impl Actor<EffectorMessage, ()> for SessionEffector {
+impl Server<EffectorMessage, ()> for SessionEffector {
     fn get_name(&self) -> String {
         "SessionEffector".to_owned()
     }

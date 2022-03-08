@@ -1,4 +1,4 @@
-use crate::armaf::Actor;
+use crate::armaf::Server;
 use anyhow::Result;
 use async_trait::async_trait;
 use logind_zbus::manager::{self};
@@ -20,7 +20,7 @@ impl InhibitionSensor {
 }
 
 #[async_trait]
-impl Actor<GetInhibitions, Vec<manager::Inhibitor>> for InhibitionSensor {
+impl Server<GetInhibitions, Vec<manager::Inhibitor>> for InhibitionSensor {
     fn get_name(&self) -> String {
         "InhibitionSensor".to_owned()
     }

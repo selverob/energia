@@ -1,4 +1,4 @@
-use crate::armaf::{Actor, EffectorMessage};
+use crate::armaf::{Server, EffectorMessage};
 use crate::external::display_server::DisplayServerController;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -44,7 +44,7 @@ impl<C: DisplayServerController> IdlenessEffector<C> {
 }
 
 #[async_trait]
-impl<C: DisplayServerController> Actor<EffectorMessage, ()> for IdlenessEffector<C> {
+impl<C: DisplayServerController> Server<EffectorMessage, ()> for IdlenessEffector<C> {
     fn get_name(&self) -> String {
         "IdlenessEffector".to_owned()
     }
