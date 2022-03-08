@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use crate::external::display_server::DisplayServerController;
-use crate::{external::display_server::SystemState};
+use crate::external::display_server::SystemState;
 use anyhow::{anyhow, Context, Result};
 use log;
-use tokio::{sync::{broadcast, watch}};
+use tokio::sync::{broadcast, watch};
 
 pub struct Sequencer<C: DisplayServerController> {
     timeout_sequence: Vec<u64>,
@@ -94,7 +94,7 @@ impl<C: DisplayServerController> Sequencer<C> {
             .context("Display server idleness channel dropped")?;
         loop {
             let received_state = *self.state_channel.borrow_and_update();
-            if received_state!= expected_state {
+            if received_state != expected_state {
                 log::error!("Received an unexpected state {:?} from display server, is something else setting the timeouts?", received_state);
             } else {
                 break;

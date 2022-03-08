@@ -14,12 +14,15 @@ async fn test_complete_sequence() {
         &sequence,
     );
 
-    let mut state_channel = sequencer.spawn().await.expect("Sequencer initialization failure");
+    let mut state_channel = sequencer
+        .spawn()
+        .await
+        .expect("Sequencer initialization failure");
     assert_eq!(state_channel.try_recv(), Err(TryRecvError::Empty));
 
     iface.notify_state_transition(SystemState::Idle).unwrap();
     assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
-    
+
     sleep(Duration::from_secs(6)).await;
     assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
 
@@ -40,15 +43,20 @@ async fn test_interruptions() {
         &sequence,
     );
 
-    let mut state_channel = sequencer.spawn().await.expect("Sequencer initialization failure");
+    let mut state_channel = sequencer
+        .spawn()
+        .await
+        .expect("Sequencer initialization failure");
 
     iface.notify_state_transition(SystemState::Idle).unwrap();
     assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
-    
+
     sleep(Duration::from_secs(6)).await;
     assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
 
-    iface.notify_state_transition(SystemState::Awakened).unwrap();
+    iface
+        .notify_state_transition(SystemState::Awakened)
+        .unwrap();
     assert_eq!(state_channel.recv().await.unwrap(), SystemState::Awakened);
 
     iface.notify_state_transition(SystemState::Idle).unwrap();
@@ -60,7 +68,9 @@ async fn test_interruptions() {
     sleep(Duration::from_secs(3)).await;
     assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
 
-    iface.notify_state_transition(SystemState::Awakened).unwrap();
+    iface
+        .notify_state_transition(SystemState::Awakened)
+        .unwrap();
     assert_eq!(state_channel.recv().await.unwrap(), SystemState::Awakened);
 }
 
