@@ -1,10 +1,10 @@
-use std::{fmt::Debug};
+use std::fmt::Debug;
 
 use crate::armaf::ActorPort;
 use log;
 use tokio::select;
-use tokio::sync::oneshot;
 use tokio::sync::broadcast;
+use tokio::sync::oneshot;
 
 /// Allow driving an actor using a [broadcast] channel.
 ///
