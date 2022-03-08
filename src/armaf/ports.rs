@@ -1,7 +1,8 @@
 //! Basic primitives for constructing a simple actor system on top of Tokio tasks.
 
+use std::fmt::Debug;
 use std::result::Result;
-
+use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::{mpsc, oneshot};
 
@@ -41,13 +42,15 @@ impl<P, R, E> Request<P, R, E> {
 }
 
 /// An error occuring during the exchange of messages with an actor.
-#[derive(Debug)]
-pub enum ActorRequestError<E> {
-    /// An error occurred in [oneshot::Sender::send()]
+#[derive(Debug, Error)]
+pub enum ActorRequestError<E: Debug> {
+    #[error("error when sending message to actor")]
     SendError,
-    /// An error occurred while awaiting the [oneshot::Receiver]
+
+    #[error("error while awating request response channel")]
     RecvError,
-    /// The actor itself returned an error
+
+    #[error("internal actor error: {0:?}")]
     ActorError(E),
 }
 
@@ -73,11 +76,11 @@ pub enum ActorRequestError<E> {
 ///    on from the [mpsc::Receiver::recv], indicating that there all
 ///    [mpsc::Sender]s have been dropped.
 #[derive(Clone, Debug)]
-pub struct ActorPort<P, R, E> {
+pub struct ActorPort<P, R, E: Debug> {
     message_sender: mpsc::Sender<Request<P, R, E>>,
 }
 
-impl<P, R, E> ActorPort<P, R, E> {
+impl<P, R, E: Debug> ActorPort<P, R, E> {
     /// Creates a new ActorPort which will send requests through the given Sender
     pub fn new(message_sender: mpsc::Sender<Request<P, R, E>>) -> ActorPort<P, R, E> {
         ActorPort { message_sender }
