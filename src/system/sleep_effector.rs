@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use logind_zbus::manager::{ManagerProxy, PrepareForSleepStream};
 use tokio_stream::StreamExt;
 
-use crate::armaf::{Server, EffectorMessage};
+use crate::armaf::{EffectorMessage, Server};
 
 pub struct SleepEffector {
     connection: zbus::Connection,

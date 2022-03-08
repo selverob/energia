@@ -1,4 +1,4 @@
-use crate::armaf::{Server, EffectorMessage};
+use crate::armaf::{EffectorMessage, Server};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use log;

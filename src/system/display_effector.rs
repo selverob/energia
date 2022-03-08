@@ -1,4 +1,4 @@
-use crate::armaf::{Server, EffectorMessage};
+use crate::armaf::{EffectorMessage, Server};
 use crate::external::brightness::BrightnessController;
 use crate::external::display_server::{self as ds, DisplayServerController};
 use anyhow::{anyhow, Result};
