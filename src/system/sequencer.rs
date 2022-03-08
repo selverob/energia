@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::external::display_server::DisplayServerController;
 use crate::external::display_server::SystemState;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use log;
 use tokio::sync::{broadcast, watch};
 

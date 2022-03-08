@@ -197,6 +197,7 @@ dependencies = [
  "env_logger",
  "log",
  "logind-zbus",
+ "thiserror",
  "tokio",
  "tokio-stream",
  "x11rb",
