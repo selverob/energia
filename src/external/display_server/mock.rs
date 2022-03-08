@@ -13,11 +13,11 @@ struct SharedState {
     dpms_enabled: bool,
     dpms_level: super::DPMSLevel,
     dpms_timeouts: super::DPMSTimeouts,
+    sender: watch::Sender<SystemState>,
 }
 
 /// A mock [DisplayServer], usable for testing
 pub struct Interface {
-    sender: watch::Sender<SystemState>,
     receiver: watch::Receiver<SystemState>,
     shared_state: Arc<Mutex<RefCell<SharedState>>>,
 }
@@ -32,8 +32,8 @@ impl Interface {
                 dpms_enabled: true,
                 dpms_level: super::DPMSLevel::On,
                 dpms_timeouts: super::DPMSTimeouts::new(10, 20, 30),
+                sender,
             }))),
-            sender,
             receiver,
         }
     }
@@ -43,7 +43,13 @@ impl Interface {
     }
 
     pub fn notify_state_transition(&self, new_state: SystemState) -> Result<()> {
-        Ok(self.sender.send(new_state)?)
+        Ok(self
+            .shared_state
+            .lock()
+            .unwrap()
+            .borrow_mut()
+            .sender
+            .send(new_state)?)
     }
 }
 
@@ -80,6 +86,20 @@ impl DisplayServerController for Controller {
             Err(make_error())
         } else {
             Ok(self.state.lock().unwrap().borrow_mut().timeout)
+        }
+    }
+
+    fn force_activity(&self) -> Result<()> {
+        if self.state.lock().unwrap().borrow_mut().should_fail {
+            Err(make_error())
+        } else {
+            Ok(self
+                .state
+                .lock()
+                .unwrap()
+                .borrow_mut()
+                .sender
+                .send(SystemState::Awakened)?)
         }
     }
 

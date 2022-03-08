@@ -66,6 +66,9 @@ pub trait DisplayServerController: 'static + Send + Sync + Clone {
     /// Get the time of inactivity after which the system is considered idle
     fn get_idleness_timeout(&self) -> Result<i16>;
 
+    /// Force the system into active state, as if the user has just performed activity
+    fn force_activity(&self) -> Result<()>;
+
     /// Get the system's support for DPMS
     fn is_dpms_capable(&self) -> Result<bool>;
 
