@@ -1,7 +1,10 @@
 use std::time::Duration;
 
-use crate::external::display_server::DisplayServerController;
 use crate::external::display_server::SystemState;
+use crate::{
+    armaf::{self, ActorRequestError},
+    external::display_server::DisplayServerController,
+};
 use anyhow::{Context, Result};
 use log;
 use tokio::sync::{broadcast, watch};
@@ -12,27 +15,28 @@ pub struct Sequencer<C: DisplayServerController> {
     controller: C,
     state_channel: watch::Receiver<SystemState>,
     original_timeout: Option<i16>,
-    sender: Option<broadcast::Sender<SystemState>>,
+    port: armaf::ActorPort<SystemState, (), anyhow::Error>,
 }
 
 impl<C: DisplayServerController> Sequencer<C> {
     pub fn new(
-        controller: C,
+        receiver_port: armaf::ActorPort<SystemState, (), anyhow::Error>,
+        ds_controller: C,
         state_channel: watch::Receiver<SystemState>,
         timeout_sequence: &Vec<u64>,
     ) -> Sequencer<C> {
         Sequencer {
             timeout_sequence: timeout_sequence.clone(),
             current_position: 0,
-            controller,
+            controller: ds_controller,
             state_channel,
             original_timeout: None,
-            sender: None,
+            port: receiver_port,
         }
     }
 
-    pub async fn spawn(mut self) -> Result<broadcast::Receiver<SystemState>> {
-        let receiver = self.initialize().await?;
+    pub async fn spawn(mut self) -> Result<()> {
+        self.initialize().await?;
 
         tokio::spawn(async move {
             // We're ignoring errors here, since any error other than channel
@@ -44,10 +48,10 @@ impl<C: DisplayServerController> Sequencer<C> {
             }
         });
 
-        Ok(receiver)
+        Ok(())
     }
 
-    async fn initialize(&mut self) -> Result<broadcast::Receiver<SystemState>> {
+    async fn initialize(&mut self) -> Result<()> {
         self.original_timeout = match self.get_current_ds_timeout().await {
             Ok(initial_timeout) => Some(initial_timeout),
             Err(err) => {
@@ -58,9 +62,7 @@ impl<C: DisplayServerController> Sequencer<C> {
         self.set_ds_timeout(self.timeout_sequence[0] as i16)
             .await
             .context("Failed to set initial timeout on the display server")?;
-        let (sender, receiver) = broadcast::channel(8);
-        self.sender = Some(sender);
-        Ok(receiver)
+        Ok(())
     }
 
     async fn get_current_ds_timeout(&self) -> Result<i16> {
@@ -73,21 +75,44 @@ impl<C: DisplayServerController> Sequencer<C> {
         tokio::task::spawn_blocking(move || sent_controller.set_idleness_timeout(timeout)).await?
     }
 
-    async fn main_loop(&mut self) -> Result<()> {
+    async fn main_loop(&mut self) {
         loop {
+            log::debug!("Waiting on timeout no. {}", self.current_position);
             if self.current_position == 0 {
-                self.wait_for_ds_signal(SystemState::Idle).await?;
+                if let Err(e) = self.wait_for_ds_signal(SystemState::Idle, false).await {
+                    if Self::is_terminating_error(e) {
+                        return;
+                    } else {
+                        self.force_activity().await;
+                        continue;
+                    }
+                }
                 self.current_position += 1;
             } else if self.current_position < self.timeout_sequence.len() {
-                self.wait_for_internal_sleep().await?;
+                if let Err(e) = self.wait_for_internal_sleep().await {
+                    if Self::is_terminating_error(e) {
+                        return;
+                    }
+                }
             } else {
-                self.wait_for_ds_signal(SystemState::Awakened).await?;
+                if let Err(e) = self.wait_for_ds_signal(SystemState::Awakened, false).await {
+                    if Self::is_terminating_error(e) {
+                        return;
+                    } else {
+                        continue;
+                    }
+                }
                 self.current_position = 0;
             }
         }
     }
 
-    async fn wait_for_ds_signal(&mut self, expected_state: SystemState) -> Result<()> {
+    async fn wait_for_ds_signal(
+        &mut self,
+        expected_state: SystemState,
+        no_propagate: bool,
+    ) -> Result<()> {
+        log::debug!("Waiting for display server signal");
         self.state_channel
             .changed()
             .await
@@ -100,23 +125,26 @@ impl<C: DisplayServerController> Sequencer<C> {
                 break;
             }
         }
-        self.sender.as_ref().unwrap().send(expected_state)?;
+        if !no_propagate {
+            self.port.request(expected_state).await?;
+        }
         Ok(())
     }
 
     async fn wait_for_internal_sleep(&mut self) -> Result<()> {
+        log::debug!("Waiting for internal sleep or display server activity");
         let sleep = tokio::time::sleep(Duration::from_secs(
             self.timeout_sequence[self.current_position],
         ));
         tokio::pin!(sleep);
         tokio::select! {
             _ = &mut sleep => {
-                self.sender.as_ref().unwrap().send(SystemState::Idle)?;
+                self.port.request(SystemState::Idle).await?;
                 self.current_position += 1;
             }
             _ = self.state_channel.changed() => {
                 if *self.state_channel.borrow_and_update() == SystemState::Awakened {
-                    self.sender.as_ref().unwrap().send(SystemState::Awakened)?;
+                    self.port.request(SystemState::Awakened).await?;
                     self.current_position = 0;
                 } else {
                     log::error!("Received an unexpected idle from display server, is something else setting the timeouts?");
@@ -130,5 +158,36 @@ impl<C: DisplayServerController> Sequencer<C> {
         Ok(self
             .set_ds_timeout(self.original_timeout.unwrap_or(-1i16))
             .await?)
+    }
+
+    async fn force_activity(&mut self) {
+        log::debug!("Recovering from actor error by forcing display server to be active");
+        if let Err(e) = self.controller.force_activity() {
+            log::error!(
+                "Couldn't force activity on display server, effects will be stopped until next idleness. {}",
+            e);
+        }
+        log::debug!("Waiting for display server to become active again...");
+        if let Err(e) = self.wait_for_ds_signal(SystemState::Awakened, true).await {
+            log::error!("Failure while waiting for filtered activity signal: {}", e);
+        } else {
+            log::debug!("Display server active");
+        }
+    }
+
+    fn is_terminating_error(e: anyhow::Error) -> bool {
+        match e.downcast_ref::<ActorRequestError<anyhow::Error>>() {
+            Some(are) => match are {
+                ActorRequestError::ActorError(actor_error) => {
+                    log::error!("Internal error in downstream actor: {}", actor_error);
+                    false
+                }
+                _ => true,
+            },
+            None => {
+                log::error!("Internal error: {}", e);
+                false
+            }
+        }
     }
 }

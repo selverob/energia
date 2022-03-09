@@ -1,106 +1,148 @@
 use std::time::Duration;
 
-use crate::external::display_server::{mock, DisplayServer, SystemState};
 use crate::system::sequencer::Sequencer;
-use tokio::{self, sync::broadcast::error::TryRecvError, time::sleep};
+use crate::{
+    armaf::{self, ActorPort},
+    external::display_server::{mock, DisplayServer, SystemState},
+};
+use anyhow::{anyhow, Result};
+use tokio::{self, sync::mpsc, time::sleep};
 
 #[tokio::test]
 async fn test_complete_sequence() {
     let iface = mock::Interface::new(600);
     let sequence = vec![5, 5, 2];
+    let (port, mut receiver) = ActorPort::make();
     let sequencer = Sequencer::new(
+        port,
         iface.get_controller(),
         iface.get_idleness_channel(),
         &sequence,
     );
-
-    let mut state_channel = sequencer
+    sequencer
         .spawn()
         .await
-        .expect("Sequencer initialization failure");
-    assert_eq!(state_channel.try_recv(), Err(TryRecvError::Empty));
+        .expect("Sequencer failed to initialize");
+    assert!(receiver.try_recv().is_err());
 
     iface.notify_state_transition(SystemState::Idle).unwrap();
-    assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
+    assert!(receiver.try_recv().is_err());
     sleep(Duration::from_secs(6)).await;
-    assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
 
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
+
+    assert!(receiver.try_recv().is_err());
     sleep(Duration::from_secs(3)).await;
-    assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
+
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
     sleep(Duration::from_secs(1)).await;
-    assert_eq!(state_channel.try_recv(), Err(TryRecvError::Empty));
+    assert!(receiver.try_recv().is_err());
 }
 
 #[tokio::test]
 async fn test_interruptions() {
     let iface = mock::Interface::new(600);
     let sequence = vec![5, 5, 2];
+    let (port, mut receiver) = ActorPort::make();
     let sequencer = Sequencer::new(
+        port,
         iface.get_controller(),
         iface.get_idleness_channel(),
         &sequence,
     );
-
-    let mut state_channel = sequencer
+    sequencer
         .spawn()
         .await
-        .expect("Sequencer initialization failure");
+        .expect("Sequencer failed to initialize");
 
     iface.notify_state_transition(SystemState::Idle).unwrap();
-    assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
     sleep(Duration::from_secs(6)).await;
-    assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
     iface
         .notify_state_transition(SystemState::Awakened)
         .unwrap();
-    assert_eq!(state_channel.recv().await.unwrap(), SystemState::Awakened);
+    assert_request_came(&mut receiver, SystemState::Awakened, Ok(())).await;
 
     iface.notify_state_transition(SystemState::Idle).unwrap();
-    assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
     sleep(Duration::from_secs(6)).await;
-    assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
     sleep(Duration::from_secs(3)).await;
-    assert_eq!(state_channel.recv().await.unwrap(), SystemState::Idle);
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
     iface
         .notify_state_transition(SystemState::Awakened)
         .unwrap();
-    assert_eq!(state_channel.recv().await.unwrap(), SystemState::Awakened);
+    assert_request_came(&mut receiver, SystemState::Awakened, Ok(())).await;
 }
 
-// #[tokio::test]
-// async fn test_error_handling() {
-//     let iface = mock::Interface::new(600);
-//     iface.set_failure_mode(true);
-//     let setter = iface.get_controller();
-//     let port = spawn_server(sequencer::IdlenessEffector::new(
-//         iface.get_controller(),
-//         &vec![20, 30],
-//     ))
-//     .await
-//     .expect("Actor initialization failed");
-//     port.request(EffectorMessage::Execute)
-//         .await
-//         .expect_err("Idleness effector didn't return an error on broken interface");
-//     iface.set_failure_mode(false);
-//     port.request(EffectorMessage::Execute)
-//         .await
-//         .expect("Idleness effector failed to set idleness");
-//     assert_eq!(setter.get_idleness_timeout().unwrap(), 20);
-//     iface.set_failure_mode(true);
-//     port.request(EffectorMessage::Rollback)
-//         .await
-//         .expect_err("Idleness effector didn't return an error on broken interface");
-//     iface.set_failure_mode(false);
-//     port.request(EffectorMessage::Rollback)
-//         .await
-//         .expect("Idleness effector failed to roll back");
-//     assert_eq!(setter.get_idleness_timeout().unwrap(), -1);
-//     drop(port);
-// }
+#[tokio::test]
+async fn test_actor_errors() {
+    let iface = mock::Interface::new(600);
+    let sequence = vec![5, 5, 5, 2];
+    let (port, mut receiver) = ActorPort::make();
+    let sequencer = Sequencer::new(
+        port,
+        iface.get_controller(),
+        iface.get_idleness_channel(),
+        &sequence,
+    );
+    sequencer
+        .spawn()
+        .await
+        .expect("Sequencer failed to initialize");
+
+    iface.notify_state_transition(SystemState::Idle).unwrap();
+    assert_request_came(
+        &mut receiver,
+        SystemState::Idle,
+        Err(anyhow!("Forced error")),
+    )
+    .await;
+
+    assert!(receiver.try_recv().is_err());
+    sleep(Duration::from_millis(200)).await;
+    iface.notify_state_transition(SystemState::Idle).unwrap();
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
+
+    sleep(Duration::from_secs(6)).await;
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
+
+    sleep(Duration::from_secs(6)).await;
+    assert_request_came(
+        &mut receiver,
+        SystemState::Idle,
+        Err(anyhow!("Forced error")),
+    )
+    .await;
+
+    sleep(Duration::from_secs(6)).await;
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
+
+    sleep(Duration::from_secs(3)).await;
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
+
+    iface
+        .notify_state_transition(SystemState::Awakened)
+        .unwrap();
+    assert_request_came(&mut receiver, SystemState::Awakened, Ok(())).await;
+    assert!(receiver.try_recv().is_err());
+}
+
+async fn assert_request_came(
+    receiver: &mut mpsc::Receiver<armaf::Request<SystemState, (), anyhow::Error>>,
+    expected_state: SystemState,
+    response: Result<()>,
+) {
+    let req = receiver.recv().await.unwrap();
+    assert_eq!(req.payload, expected_state);
+    req.respond(response).unwrap();
+}
