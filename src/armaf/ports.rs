@@ -42,7 +42,7 @@ impl<P, R, E> Request<P, R, E> {
 }
 
 /// An error occuring during the exchange of messages with an actor.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum ActorRequestError<E: Debug> {
     #[error("error when sending message to actor")]
     SendError,
@@ -75,9 +75,20 @@ pub enum ActorRequestError<E: Debug> {
 ///    itself. Any cleanup actions should be performed once a None is returned
 ///    on from the [mpsc::Receiver::recv], indicating that there all
 ///    [mpsc::Sender]s have been dropped.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct ActorPort<P, R, E: Debug> {
     message_sender: mpsc::Sender<Request<P, R, E>>,
+}
+
+// #[derive(Debug)] creates an implementation of Clone 
+// which only applies if all the type parameters are Clone.
+// E tends to be anyhow::Error, which is not Clone, so 
+// most the ActorPorts would not be Clone with the derived
+// implementation.
+impl<P, R, E: Debug> Clone for ActorPort<P, R, E> {
+    fn clone(&self) -> Self {
+        Self { message_sender: self.message_sender.clone() }
+    }
 }
 
 impl<P, R, E: Debug> ActorPort<P, R, E> {
