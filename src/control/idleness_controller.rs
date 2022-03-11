@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use super::effect::Effect;
 use crate::system::inhibition_sensor::GetInhibitions;
 use crate::{
@@ -22,7 +20,7 @@ pub struct IdlenessController {
 }
 
 impl IdlenessController {
-    fn new(
+    pub fn new(
         effect_bunches: Vec<Vec<Effect>>,
         inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
     ) -> IdlenessController {
@@ -41,18 +39,22 @@ impl IdlenessController {
 
         let mut immediate_rollback_ports: Vec<EffectorPort> = Vec::new();
         for effect in &self.effect_bunches[self.current_bunch] {
-            log::debug!("Applying effect {}", effect.effect_name);
+            log::debug!("Applying effect {}", effect.name);
             if let Err(e) = effect.recipient.request(EffectorMessage::Execute).await {
-                log::error!("Failed to apply effect {}: {:?}", effect.effect_name, e);
+                log::error!("Failed to apply effect {}: {:?}", effect.name, e);
                 continue;
             }
             match effect.rollback_strategy {
-                crate::control::effect::RollbackStrategy::OnActivity => self.rollback_stack.push(effect.recipient.clone()),
-                crate::control::effect::RollbackStrategy::Immediate => immediate_rollback_ports.push(effect.recipient.clone()),
+                crate::control::effect::RollbackStrategy::OnActivity => {
+                    self.rollback_stack.push(effect.recipient.clone())
+                }
+                crate::control::effect::RollbackStrategy::Immediate => {
+                    immediate_rollback_ports.push(effect.recipient.clone())
+                }
             }
         }
 
-        rollback_all(&mut immediate_rollback_ports).await;        
+        rollback_all(&mut immediate_rollback_ports).await;
 
         self.current_bunch += 1;
         Ok(())
@@ -82,7 +84,7 @@ impl IdlenessController {
         let upcoming_inhibition_types: Vec<InhibitType> = dedup_inhibit_types(
             &self.effect_bunches[self.current_bunch]
                 .iter()
-                .flat_map(|e| e.causes_inhibitions.clone())
+                .flat_map(|e| e.inhibited_by.clone())
                 .collect(),
         );
 

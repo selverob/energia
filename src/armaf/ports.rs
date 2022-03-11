@@ -80,14 +80,16 @@ pub struct ActorPort<P, R, E: Debug> {
     message_sender: mpsc::Sender<Request<P, R, E>>,
 }
 
-// #[derive(Debug)] creates an implementation of Clone 
+// #[derive(Debug)] creates an implementation of Clone
 // which only applies if all the type parameters are Clone.
-// E tends to be anyhow::Error, which is not Clone, so 
+// E tends to be anyhow::Error, which is not Clone, so
 // most the ActorPorts would not be Clone with the derived
 // implementation.
 impl<P, R, E: Debug> Clone for ActorPort<P, R, E> {
     fn clone(&self) -> Self {
-        Self { message_sender: self.message_sender.clone() }
+        Self {
+            message_sender: self.message_sender.clone(),
+        }
     }
 }
 
