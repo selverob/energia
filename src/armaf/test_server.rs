@@ -1,20 +1,20 @@
-use super::actors::{spawn_actor, Actor};
+use super::server::{spawn_server, Server};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-struct TestActor {
+struct TestServer {
     current_number: usize,
     fail_at: usize,
     fail_initialization: bool,
     drop_notifier: mpsc::Sender<()>,
 }
 
-impl TestActor {
-    fn new(fail_at: usize, fail_initialization: bool) -> (TestActor, mpsc::Receiver<()>) {
+impl TestServer {
+    fn new(fail_at: usize, fail_initialization: bool) -> (TestServer, mpsc::Receiver<()>) {
         let (drop_sender, drop_receiver) = mpsc::channel(1);
         (
-            TestActor {
+            TestServer {
                 current_number: 0,
                 drop_notifier: drop_sender,
                 fail_at,
@@ -26,7 +26,7 @@ impl TestActor {
 }
 
 #[async_trait]
-impl Actor<(), usize> for TestActor {
+impl Server<(), usize> for TestServer {
     fn get_name(&self) -> String {
         "test_actor".to_owned()
     }
@@ -55,21 +55,21 @@ impl Actor<(), usize> for TestActor {
 
 #[tokio::test]
 async fn test_happy_path() {
-    let (actor, mut notifier) = TestActor::new(10, false);
-    let port = spawn_actor(actor).await.expect("No port returned");
+    let (server, mut notifier) = TestServer::new(10, false);
+    let port = spawn_server(server).await.expect("No port returned");
     assert_eq!(port.request(()).await.unwrap(), 1);
     assert_eq!(port.request(()).await.unwrap(), 2);
     drop(port);
     notifier
         .recv()
         .await
-        .expect("tear_down not called on actor");
+        .expect("tear_down not called on server");
 }
 
 #[tokio::test]
 async fn test_response_failure() {
-    let (actor, mut notifier) = TestActor::new(3, false);
-    let port = spawn_actor(actor).await.expect("No port returned");
+    let (server, mut notifier) = TestServer::new(3, false);
+    let port = spawn_server(server).await.expect("No port returned");
     assert_eq!(port.request(()).await.unwrap(), 1);
     assert_eq!(port.request(()).await.unwrap(), 2);
     assert!(port.request(()).await.is_err());
@@ -77,11 +77,11 @@ async fn test_response_failure() {
     notifier
         .recv()
         .await
-        .expect("tear_down not called on actor");
+        .expect("tear_down not called on server");
 }
 
 #[tokio::test]
 async fn test_initialization_failure() {
-    let (actor, _) = TestActor::new(3, true);
-    assert!(spawn_actor(actor).await.is_err());
+    let (server, _) = TestServer::new(3, true);
+    assert!(spawn_server(server).await.is_err());
 }

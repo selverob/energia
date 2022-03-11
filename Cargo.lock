@@ -197,6 +197,7 @@ dependencies = [
  "env_logger",
  "log",
  "logind-zbus",
+ "thiserror",
  "tokio",
  "tokio-stream",
  "x11rb",
@@ -390,7 +391,7 @@ dependencies = [
 [[package]]
 name = "logind-zbus"
 version = "3.0.1"
-source = "git+https://gitlab.com/sellweek/logind-zbus.git?branch=main#1c0697c2eddd8e2b8fc3a4057a6d9a9989e58570"
+source = "git+https://gitlab.com/sellweek/logind-zbus.git?branch=main#da3c5a61c8154af4e902f1adac946baa34062ba1"
 dependencies = [
  "serde",
  "zbus",

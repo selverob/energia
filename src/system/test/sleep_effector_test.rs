@@ -1,23 +1,24 @@
-use std::env;
-use std::time::SystemTime;
-
-use crate::{
-    armaf::{spawn_actor, EffectorMessage},
-    external::dbus,
-    system::sleep_effector,
-};
-
 // This is indeed not a true test. It's a bit difficult to test behavior which
 // actually causes the computer to go down.
 // If you want to test if the functionality didn't break, just uncomment it,
 // run it manually and keep the computer asleep for at least 10 seconds.
+
+// use std::env;
+// use std::time::SystemTime;
+
+// use crate::{
+//     armaf::{spawn_server, EffectorMessage},
+//     external::dbus,
+//     system::sleep_effector,
+// };
+
 // #[tokio::test]
 // #[ignore]
 // async fn test_idle_hints() {
 //     env::set_var("RUST_LOG", "debug");
 //     env_logger::init();
 //     let mut factory = dbus::ConnectionFactory::new();
-//     let port = spawn_actor(sleep_effector::SleepEffector::new(
+//     let port = spawn_server(sleep_effector::SleepEffector::new(
 //         factory.get_system().await.unwrap(),
 //     ))
 //     .await

@@ -37,6 +37,9 @@ fn test_failure_mode() {
         .set_idleness_timeout(10)
         .expect_err("No failure even when failure mode is true");
     controller
+        .force_activity()
+        .expect_err("No failure even when failure mode is true");
+    controller
         .is_dpms_capable()
         .expect_err("No failure even when failure mode is true");
     controller
@@ -66,6 +69,23 @@ fn test_idleness_channel() {
         .expect("Send error");
     while !chan.has_changed().expect("Receive error") {}
     assert_eq!(*chan.borrow_and_update(), SystemState::Idle);
+}
+
+#[test]
+fn test_activity_forcing() {
+    let interface = mock::Interface::new(10);
+    let mut chan = interface.get_idleness_channel();
+    assert_eq!(*chan.borrow_and_update(), SystemState::Awakened);
+    interface
+        .notify_state_transition(SystemState::Idle)
+        .expect("Send error");
+    while !chan.has_changed().expect("Receive error") {}
+    assert_eq!(*chan.borrow_and_update(), SystemState::Idle);
+    let controller = interface.get_controller();
+    controller
+        .force_activity()
+        .expect("Failed to force activity");
+    assert_eq!(*chan.borrow_and_update(), SystemState::Awakened);
 }
 
 #[test]

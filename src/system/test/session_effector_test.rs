@@ -1,4 +1,4 @@
-use crate::armaf::{spawn_actor, EffectorMessage};
+use crate::armaf::{spawn_server, EffectorMessage};
 use crate::external::dbus;
 use crate::system::session_effector;
 use anyhow::Result;
@@ -14,7 +14,7 @@ async fn test_happy_path() {
     let mut factory = dbus::ConnectionFactory::new();
     let test_connection = factory.get_system().await.unwrap();
     let session_proxy = get_session_proxy(&test_connection).await.unwrap();
-    let port = spawn_actor(session_effector::SessionEffector::new(
+    let port = spawn_server(session_effector::SessionEffector::new(
         factory.get_system().await.unwrap(),
     ))
     .await

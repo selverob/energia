@@ -1,17 +1,32 @@
-use crate::{armaf, system::inhibition_sensor::Inhibition};
-use std::time::Duration;
+use crate::armaf;
+use logind_zbus::manager::InhibitType;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum RollbackStrategy {
-    ControllerInitiated(armaf::ActorPort<armaf::EffectorMessage, (), ()>),
-    UserInitiated,
+    OnActivity,
+    Immediate,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Effect {
-    pub effect_name: String,
-    pub effect_timeout: Duration, // The time which should pass from previous effect
-    pub inhibited_by: Vec<Inhibition>,
-    pub execute_recipient: armaf::ActorPort<armaf::EffectorMessage, (), ()>,
-    pub rollback_recipient: RollbackStrategy,
+    pub name: String,
+    pub inhibited_by: Vec<InhibitType>,
+    pub recipient: armaf::EffectorPort,
+    pub rollback_strategy: RollbackStrategy,
+}
+
+impl Effect {
+    pub fn new(
+        name: String,
+        inhibited_by: Vec<InhibitType>,
+        recipient: armaf::EffectorPort,
+        rollback_strategy: RollbackStrategy,
+    ) -> Effect {
+        Effect {
+            name,
+            inhibited_by,
+            recipient,
+            rollback_strategy,
+        }
+    }
 }

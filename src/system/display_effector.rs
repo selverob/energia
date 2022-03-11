@@ -1,4 +1,4 @@
-use crate::armaf::{Actor, EffectorMessage};
+use crate::armaf::{EffectorMessage, Server};
 use crate::external::brightness::BrightnessController;
 use crate::external::display_server::{self as ds, DisplayServerController};
 use anyhow::{anyhow, Result};
@@ -103,7 +103,7 @@ impl<B: BrightnessController, D: ds::DisplayServerController> DisplayEffector<B,
 }
 
 #[async_trait]
-impl<B: BrightnessController, D: ds::DisplayServerController> Actor<EffectorMessage, ()>
+impl<B: BrightnessController, D: ds::DisplayServerController> Server<EffectorMessage, ()>
     for DisplayEffector<B, D>
 {
     fn get_name(&self) -> String {

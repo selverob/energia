@@ -1,7 +1,8 @@
 //! Basic primitives for constructing a simple actor system on top of Tokio tasks.
 
+use std::fmt::Debug;
 use std::result::Result;
-
+use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::{mpsc, oneshot};
 
@@ -41,13 +42,15 @@ impl<P, R, E> Request<P, R, E> {
 }
 
 /// An error occuring during the exchange of messages with an actor.
-#[derive(Debug)]
-pub enum ActorRequestError<E> {
-    /// An error occurred in [oneshot::Sender::send()]
+#[derive(Debug, Error, Clone)]
+pub enum ActorRequestError<E: Debug> {
+    #[error("error when sending message to actor")]
     SendError,
-    /// An error occurred while awaiting the [oneshot::Receiver]
+
+    #[error("error while awating request response channel")]
     RecvError,
-    /// The actor itself returned an error
+
+    #[error("internal actor error: {0:?}")]
     ActorError(E),
 }
 
@@ -72,12 +75,25 @@ pub enum ActorRequestError<E> {
 ///    itself. Any cleanup actions should be performed once a None is returned
 ///    on from the [mpsc::Receiver::recv], indicating that there all
 ///    [mpsc::Sender]s have been dropped.
-#[derive(Clone, Debug)]
-pub struct ActorPort<P, R, E> {
+#[derive(Debug)]
+pub struct ActorPort<P, R, E: Debug> {
     message_sender: mpsc::Sender<Request<P, R, E>>,
 }
 
-impl<P, R, E> ActorPort<P, R, E> {
+// #[derive(Debug)] creates an implementation of Clone
+// which only applies if all the type parameters are Clone.
+// E tends to be anyhow::Error, which is not Clone, so
+// most the ActorPorts would not be Clone with the derived
+// implementation.
+impl<P, R, E: Debug> Clone for ActorPort<P, R, E> {
+    fn clone(&self) -> Self {
+        Self {
+            message_sender: self.message_sender.clone(),
+        }
+    }
+}
+
+impl<P, R, E: Debug> ActorPort<P, R, E> {
     /// Creates a new ActorPort which will send requests through the given Sender
     pub fn new(message_sender: mpsc::Sender<Request<P, R, E>>) -> ActorPort<P, R, E> {
         ActorPort { message_sender }
@@ -116,23 +132,6 @@ impl<P, R, E> ActorPort<P, R, E> {
                 Ok(response) => Ok(response),
                 Err(actor_error) => Err(ActorRequestError::ActorError(actor_error)),
             },
-        }
-    }
-}
-
-pub async fn error_loop<P, R>(
-    mut rx: mpsc::Receiver<Request<P, R, anyhow::Error>>,
-    error_message: String,
-) {
-    loop {
-        match rx.recv().await {
-            None => {
-                log::info!("Stopping");
-                return;
-            }
-            Some(req) => {
-                req.respond(Err(anyhow::anyhow!(error_message.clone())));
-            }
         }
     }
 }

@@ -5,7 +5,6 @@ use super::DisplayServerController;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use tokio::sync::watch;
-use x11rb::connection::{Connection, RequestConnection};
 use x11rb::protocol::dpms::{self, ConnectionExt as _};
 use x11rb::protocol::screensaver::{self, ConnectionExt as _, State};
 use x11rb::protocol::xproto::{
@@ -15,6 +14,10 @@ use x11rb::protocol::xproto::{
 use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 use x11rb::COPY_DEPTH_FROM_PARENT;
+use x11rb::{
+    connection::{Connection, RequestConnection},
+    protocol::xproto::ScreenSaver,
+};
 
 impl Into<SystemState> for State {
     fn into(self) -> SystemState {
@@ -226,6 +229,14 @@ impl DisplayServerController for X11DisplayServerController {
     fn get_idleness_timeout(&self) -> Result<i16> {
         debug!("Fetching idleness timeout");
         Ok(self.connection.get_screen_saver()?.reply()?.timeout as i16)
+    }
+
+    fn force_activity(&self) -> Result<()> {
+        debug!("Force resetting the screensaver timeout");
+        Ok(self
+            .connection
+            .force_screen_saver(ScreenSaver::RESET)?
+            .check()?)
     }
 
     fn is_dpms_capable(&self) -> Result<bool> {

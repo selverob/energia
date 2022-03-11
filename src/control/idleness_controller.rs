@@ -1,90 +1,159 @@
 use super::effect::Effect;
-use crate::armaf::{ActorPort, EffectorMessage, EffectorPort, Request};
-use crate::system::{
-    idleness_effector::{self, SetTimeout},
-    idleness_sensor::{self, IdlenessState},
-    inhibition_sensor::{self, GetInhibitions, Inhibition},
+use crate::system::inhibition_sensor::GetInhibitions;
+use crate::{
+    armaf::{ActorPort, EffectorMessage, EffectorPort, Server},
+    external::display_server::SystemState,
 };
-use log;
-use std::collections::VecDeque;
-use tokio::sync::mpsc;
-
-enum State {
-    Waiting,
-    ProcessingEffect,
-}
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
+use logind_zbus::manager::{InhibitType, Inhibitor, Mode};
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Stop;
 
-pub struct DisplayServerController {
-    effects: Vec<Effect>,
-    idleness_rx: mpsc::Receiver<IdlenessState>,
-
-    idleness_effector: ActorPort<SetTimeout, (), ()>,
-    inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibition>, ()>,
-    effect_queue: VecDeque<Effect>,
+pub struct IdlenessController {
+    effect_bunches: Vec<Vec<Effect>>,
+    current_bunch: usize,
     rollback_stack: Vec<EffectorPort>,
-    idleness_control_channel: ActorPort<(), (), ()>, // TODO: Remove once not needed, stored only to prevent channel lifetime dependent actor stop
-    stop_receiver: mpsc::Receiver<Request<Stop, (), ()>>,
+
+    inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
 }
 
-pub fn spawn(effects: Vec<Effect>) -> ActorPort<Stop, (), ()> {
-    log::debug!("Configuring new DisplayServerController");
-    let (idleness_tx, idleness_rx) = mpsc::channel(8);
-    let idleness_effector = idleness_effector::spawn();
-    let inhibition_sensor = inhibition_sensor::spawn();
-    let idleness_control_channel = idleness_sensor::spawn(idleness_tx);
-
-    let (port, rx) = ActorPort::make();
-    let mut controller = DisplayServerController {
-        effects,
-        idleness_rx,
-        idleness_effector,
-        inhibition_sensor,
-        idleness_control_channel,
-        effect_queue: VecDeque::new(),
-        rollback_stack: vec![],
-        stop_receiver: rx,
-    };
-
-    tokio::spawn(async move {
-        controller.spawn().await;
-    });
-
-    port
-}
-
-impl DisplayServerController {
-    fn reinitialize_effect_queue(&mut self) {
-        self.effect_queue = self.effects.iter().cloned().collect();
+impl IdlenessController {
+    pub fn new(
+        effect_bunches: Vec<Vec<Effect>>,
+        inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
+    ) -> IdlenessController {
+        IdlenessController {
+            effect_bunches,
+            current_bunch: 0,
+            inhibition_sensor,
+            rollback_stack: Vec::new(),
+        }
     }
 
-    async fn spawn(&mut self) {
-        log::info!("DisplayServerController started");
+    async fn handle_idleness(&mut self) -> Result<()> {
+        if self.is_current_bunch_inhibited().await {
+            return Err(anyhow!("Upcoming bunch is inhibited"));
+        }
 
-        loop {
-            tokio::select! {
-                idleness_state = self.idleness_rx.recv() => {
-                    log::debug!("Got new idleness state: {:?}", idleness_state);
+        let mut immediate_rollback_ports: Vec<EffectorPort> = Vec::new();
+        for effect in &self.effect_bunches[self.current_bunch] {
+            log::debug!("Applying effect {}", effect.name);
+            if let Err(e) = effect.recipient.request(EffectorMessage::Execute).await {
+                log::error!("Failed to apply effect {}: {:?}", effect.name, e);
+                continue;
+            }
+            match effect.rollback_strategy {
+                crate::control::effect::RollbackStrategy::OnActivity => {
+                    self.rollback_stack.push(effect.recipient.clone())
                 }
-                _ = self.stop_receiver.recv() => {
-                    log::info!("DisplayServerController stopping");
-                    return;
+                crate::control::effect::RollbackStrategy::Immediate => {
+                    immediate_rollback_ports.push(effect.recipient.clone())
                 }
             }
         }
+
+        rollback_all(&mut immediate_rollback_ports).await;
+
+        self.current_bunch += 1;
+        Ok(())
     }
 
-    async fn reset(&mut self) {
-        log::info!("Resetting DisplayServerController");
-        while let Some(effector) = self.rollback_stack.pop() {
-            effector.request(EffectorMessage::Rollback).await;
+    async fn get_inhibitors(&mut self) -> Vec<Inhibitor> {
+        let inhibitors = match self.inhibition_sensor.request(GetInhibitions).await {
+            Ok(i) => i,
+            Err(e) => {
+                log::error!(
+                    "Couldn't get inhibitions, will continue as if none exist: {:?}",
+                    e
+                );
+                Vec::new()
+            }
+        };
+
+        // Delay inhibitors are handled automatically by systemd
+        inhibitors
+            .into_iter()
+            .filter(|i| i.mode() == Mode::Block)
+            .collect()
+    }
+
+    async fn is_current_bunch_inhibited(&mut self) -> bool {
+        let inhibitors = self.get_inhibitors().await;
+        let upcoming_inhibition_types: Vec<InhibitType> = dedup_inhibit_types(
+            &self.effect_bunches[self.current_bunch]
+                .iter()
+                .flat_map(|e| e.inhibited_by.clone())
+                .collect(),
+        );
+
+        let mut is_inhibited = false;
+
+        for t in upcoming_inhibition_types {
+            for i in find_inhibitors_with_type(&inhibitors, t) {
+                is_inhibited = true;
+                log::info!(
+                    "Not moving to next idleness level, {:?} inhibited by {} with reason {}",
+                    t,
+                    i.who(),
+                    i.why(),
+                );
+            }
         }
-        self.reinitialize_effect_queue();
-        let timeout_in_seconds = self.effects[0].effect_timeout.as_secs();
-        self.idleness_effector
-            .request(idleness_effector::SetTimeout(timeout_in_seconds))
-            .await;
+        is_inhibited
+    }
+
+    async fn handle_wakeup(&mut self) -> Result<()> {
+        log::info!("System awakened, rolling back all effects");
+        rollback_all(&mut self.rollback_stack).await;
+        self.current_bunch = 0;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Server<SystemState, ()> for IdlenessController {
+    fn get_name(&self) -> String {
+        "IdlenessController".to_owned()
+    }
+
+    async fn handle_message(&mut self, system_state: SystemState) -> Result<()> {
+        match system_state {
+            SystemState::Awakened => self.handle_wakeup().await?,
+            SystemState::Idle => self.handle_idleness().await?,
+        }
+        Ok(())
+    }
+}
+
+fn find_inhibitors_with_type(
+    inhibitors: &Vec<Inhibitor>,
+    inhibit_type: InhibitType,
+) -> Vec<&Inhibitor> {
+    let mut found = Vec::new();
+    for inhibitor in inhibitors {
+        if inhibitor.what().types().contains(&inhibit_type) {
+            found.push(inhibitor);
+        }
+    }
+    found
+}
+
+fn dedup_inhibit_types(duplicated: &Vec<InhibitType>) -> Vec<InhibitType> {
+    let mut deduped = Vec::new();
+    for t in duplicated {
+        if !deduped.contains(t) {
+            deduped.push(*t);
+        }
+    }
+    deduped
+}
+
+async fn rollback_all(rollback_vec: &mut Vec<EffectorPort>) {
+    while let Some(port) = rollback_vec.pop() {
+        if let Err(e) = port.request(EffectorMessage::Rollback).await {
+            log::error!("Error on rollback: {:?}", e);
+        }
     }
 }

@@ -125,6 +125,8 @@ fn test_basic_flow() {
         sleep(Duration::from_secs(3));
         assert!(receiver.has_changed().expect("Failure in receive channel"));
         assert_eq!(*receiver.borrow_and_update(), SystemState::Idle);
+        // This one doesn't use force_activity, since we want to test events more realistic
+        // than direct screensaver cancellation
         connection
             .xtest_fake_input(2, 12, x11rb::CURRENT_TIME, root, 0, 0, 0)
             .expect("Failed sending event")
@@ -137,6 +139,27 @@ fn test_basic_flow() {
         controller
             .set_idleness_timeout(-1)
             .expect("Failed to reset screensaver timeout");
+    });
+}
+
+#[test]
+fn test_activity_forcing() {
+    with_xvfb(|iface, connection, screen_num| {
+        let root = connection.setup().roots[screen_num].root;
+        let controller = iface.get_controller();
+        controller
+            .set_idleness_timeout(2)
+            .expect("Failed to set Idleness timeout");
+        let mut receiver = iface.get_idleness_channel();
+        sleep(Duration::from_secs(3));
+        assert!(receiver.has_changed().expect("Failure in receive channel"));
+        assert_eq!(*receiver.borrow_and_update(), SystemState::Idle);
+        controller
+            .force_activity()
+            .expect("Failed to force activity");
+        sleep(Duration::from_secs(1));
+        assert!(receiver.has_changed().expect("Failure in receive channel"));
+        assert_eq!(*receiver.borrow_and_update(), SystemState::Awakened);
     });
 }
 
