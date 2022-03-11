@@ -114,17 +114,17 @@ async fn test_without_inhibitors() {
     let ec3 = EffectsCounter::new();
     let effect_bunches = vec![
         vec![
-            make_effect(1, 1, ec1.get_port(), RollbackStrategy::Immediate),
-            make_effect(1, 2, ec2.get_port(), RollbackStrategy::Immediate),
-        ],
-        vec![
-            make_effect(2, 1, ec1.get_port(), RollbackStrategy::Immediate),
-            make_effect(2, 2, ec2.get_port(), RollbackStrategy::OnActivity),
-        ],
-        vec![
             make_effect(1, 1, ec1.get_port(), RollbackStrategy::OnActivity),
-            make_effect(1, 2, ec2.get_port(), RollbackStrategy::Immediate),
-            make_effect(1, 3, ec3.get_port(), RollbackStrategy::Immediate),
+            make_effect(1, 2, ec2.get_port(), RollbackStrategy::OnActivity),
+        ],
+        vec![
+            make_effect(2, 1, ec1.get_port(), RollbackStrategy::OnActivity),
+            make_effect(2, 2, ec2.get_port(), RollbackStrategy::Immediate),
+        ],
+        vec![
+            make_effect(1, 1, ec1.get_port(), RollbackStrategy::Immediate),
+            make_effect(1, 2, ec2.get_port(), RollbackStrategy::OnActivity),
+            make_effect(1, 3, ec3.get_port(), RollbackStrategy::OnActivity),
         ],
     ];
 
