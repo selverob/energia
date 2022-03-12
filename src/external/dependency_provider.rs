@@ -8,18 +8,18 @@ use super::{
 use anyhow::{anyhow, Result};
 use tokio::sync::watch;
 
-pub struct DependencyProvider<D: DisplayServer, B: BrightnessController> {
+pub struct DependencyProvider<B: BrightnessController, D: DisplayServer> {
     dbus_factory: Option<dbus::ConnectionFactory>,
     display_server: D,
     brightness_controller: B,
 }
 
-impl<D: DisplayServer, B: BrightnessController> DependencyProvider<D, B> {
+impl<B: BrightnessController, D: DisplayServer> DependencyProvider<B, D> {
     pub fn new(
         dbus_factory: Option<dbus::ConnectionFactory>,
-        display_server: D,
         brightness_controller: B,
-    ) -> DependencyProvider<D, B> {
+        display_server: D,
+    ) -> DependencyProvider<B, D> {
         DependencyProvider {
             dbus_factory,
             display_server,
@@ -60,7 +60,7 @@ impl<D: DisplayServer, B: BrightnessController> DependencyProvider<D, B> {
     }
 }
 
-impl DependencyProvider<X11Interface, LogindBrightnessController> {
+impl DependencyProvider<LogindBrightnessController, X11Interface> {
     pub async fn make_system() -> Result<Self> {
         let mut dbus_factory = dbus::ConnectionFactory::new();
         let connection = dbus_factory.get_system().await?;
@@ -70,18 +70,18 @@ impl DependencyProvider<X11Interface, LogindBrightnessController> {
             LogindBrightnessController::new("intel_backlight", connection, path).await?;
         Ok(DependencyProvider::new(
             Some(dbus_factory),
-            X11Interface::new(None)?,
             brightness_controller,
+            X11Interface::new(None)?,
         ))
     }
 }
 
-impl DependencyProvider<display_server::mock::Interface, MockBrightnessController> {
+impl DependencyProvider<MockBrightnessController, display_server::mock::Interface> {
     pub fn make_mock() -> Self {
         DependencyProvider::new(
             None,
-            display_server::mock::Interface::new(60),
             MockBrightnessController::new(50),
+            display_server::mock::Interface::new(60),
         )
     }
 }

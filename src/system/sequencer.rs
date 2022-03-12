@@ -1,9 +1,8 @@
 use std::time::Duration;
 
-use crate::external::display_server::SystemState;
 use crate::{
     armaf::{self, ActorRequestError},
-    external::display_server::DisplayServerController,
+    external::display_server::{DisplayServerController, SystemState},
 };
 use anyhow::{Context, Result};
 use log;

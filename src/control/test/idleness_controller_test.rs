@@ -1,6 +1,5 @@
 use std::{
     cell::Cell,
-    env,
     sync::{Arc, Mutex},
 };
 

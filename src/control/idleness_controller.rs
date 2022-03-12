@@ -1,8 +1,8 @@
 use super::effect::Effect;
-use crate::system::inhibition_sensor::GetInhibitions;
 use crate::{
     armaf::{ActorPort, EffectorMessage, EffectorPort, Server},
     external::display_server::SystemState,
+    system::inhibition_sensor::GetInhibitions,
 };
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;

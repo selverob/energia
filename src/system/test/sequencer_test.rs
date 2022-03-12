@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use crate::system::sequencer::Sequencer;
 use crate::{
     armaf::{self, ActorPort},
     external::display_server::{mock, DisplayServer, SystemState},
+    system::sequencer::Sequencer,
 };
 use anyhow::{anyhow, Result};
 use tokio::{self, sync::mpsc, time::sleep};

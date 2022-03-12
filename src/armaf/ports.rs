@@ -1,10 +1,8 @@
 //! Basic primitives for constructing a simple actor system on top of Tokio tasks.
 
-use std::fmt::Debug;
-use std::result::Result;
+use std::{fmt::Debug, result::Result};
 use thiserror::Error;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, mpsc::error::SendError, oneshot};
 
 /// A shorthand type defining a [oneshot::Receiver] which is used to receive the
 /// results of an operation invoked by a [Request].

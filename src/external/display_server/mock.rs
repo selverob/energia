@@ -1,8 +1,8 @@
 use super::{DisplayServer, DisplayServerController, SystemState};
 use anyhow::Result;
-use std::io::{Error, ErrorKind};
 use std::{
     cell::RefCell,
+    io::{Error, ErrorKind},
     sync::{Arc, Mutex},
 };
 use tokio::sync::watch;

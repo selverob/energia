@@ -1,11 +1,11 @@
-use crate::armaf::{spawn_server, EffectorMessage};
-use crate::external::dbus;
-use crate::system::session_effector;
+use crate::{
+    armaf::{spawn_server, EffectorMessage},
+    external::dbus,
+    system::session_effector,
+};
 use anyhow::Result;
 use logind_zbus::{manager, session};
-use std::process;
-use std::thread::sleep;
-use std::time::Duration;
+use std::{process, thread::sleep, time::Duration};
 use tokio;
 
 #[tokio::test]

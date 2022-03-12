@@ -3,10 +3,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use logind_zbus::session::SessionProxy;
 use std::path::Path;
-use tokio::fs;
-use tokio::io::AsyncReadExt;
-use zbus;
-use zbus::zvariant::OwnedObjectPath;
+use tokio::{fs, io::AsyncReadExt};
+use zbus::{self, zvariant::OwnedObjectPath};
 
 /// A [BrightnessController] which uses the kernel's /sys/class/backlight device
 /// class to control the display brightness.

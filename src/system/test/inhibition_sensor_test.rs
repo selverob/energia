@@ -1,6 +1,4 @@
-use crate::armaf::spawn_server;
-use crate::external::dbus::ConnectionFactory;
-use crate::system::inhibition_sensor;
+use crate::{armaf::spawn_server, external::dbus::ConnectionFactory, system::inhibition_sensor};
 use logind_zbus::manager;
 use tokio;
 

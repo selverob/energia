@@ -200,6 +200,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
+ "toml",
  "x11rb",
  "zbus",
  "zvariant 2.10.0",
