@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use log;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::watch;
 
 pub struct Sequencer<C: DisplayServerController> {
     timeout_sequence: Vec<u64>,

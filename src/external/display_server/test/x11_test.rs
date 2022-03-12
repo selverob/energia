@@ -145,7 +145,7 @@ fn test_basic_flow() {
 #[test]
 fn test_activity_forcing() {
     with_xvfb(|iface, connection, screen_num| {
-        let root = connection.setup().roots[screen_num].root;
+        let _ = connection.setup().roots[screen_num].root;
         let controller = iface.get_controller();
         controller
             .set_idleness_timeout(2)
