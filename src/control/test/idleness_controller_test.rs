@@ -6,11 +6,8 @@ use std::{
 use logind_zbus::manager::{InhibitType, InhibitTypes, Inhibitor, Mode};
 
 use crate::{
-    armaf::{spawn_server, ActorPort, EffectorPort},
-    control::{
-        effect::{Effect, RollbackStrategy},
-        idleness_controller::{self, IdlenessController},
-    },
+    armaf::{spawn_server, ActorPort, Effect, EffectorPort, RollbackStrategy},
+    control::idleness_controller::{self, Action, IdlenessController},
     external::display_server::SystemState,
     system::inhibition_sensor::{self, GetInhibitions},
 };
@@ -43,7 +40,7 @@ impl EffectsCounter {
         }
     }
 
-    fn get_effect_count(&self) -> isize {
+    fn ongoing_effect_count(&self) -> isize {
         self.running_effects.lock().unwrap().get()
     }
 
@@ -97,13 +94,16 @@ impl MockInhibitionSensor {
     }
 }
 
-fn make_effect(
+fn make_action(
     bunch: usize,
     effect_no: usize,
     port: EffectorPort,
     rollback: RollbackStrategy,
-) -> Effect {
-    Effect::new(format!("{}-{}", bunch, effect_no), vec![], port, rollback)
+) -> Action {
+    Action::new(
+        Effect::new(format!("{}-{}", bunch, effect_no), vec![], rollback),
+        port,
+    )
 }
 
 #[tokio::test]
@@ -111,89 +111,93 @@ async fn test_without_inhibitors() {
     let ec1 = EffectsCounter::new();
     let ec2 = EffectsCounter::new();
     let ec3 = EffectsCounter::new();
-    let effect_bunches = vec![
+    let action_bunches = vec![
         vec![
-            make_effect(1, 1, ec1.get_port(), RollbackStrategy::OnActivity),
-            make_effect(1, 2, ec2.get_port(), RollbackStrategy::OnActivity),
+            make_action(1, 1, ec1.get_port(), RollbackStrategy::OnActivity),
+            make_action(1, 2, ec2.get_port(), RollbackStrategy::OnActivity),
         ],
         vec![
-            make_effect(2, 1, ec1.get_port(), RollbackStrategy::OnActivity),
-            make_effect(2, 2, ec2.get_port(), RollbackStrategy::Immediate),
+            make_action(2, 1, ec1.get_port(), RollbackStrategy::OnActivity),
+            make_action(2, 2, ec2.get_port(), RollbackStrategy::Immediate),
         ],
         vec![
-            make_effect(1, 1, ec1.get_port(), RollbackStrategy::Immediate),
-            make_effect(1, 2, ec2.get_port(), RollbackStrategy::OnActivity),
-            make_effect(1, 3, ec3.get_port(), RollbackStrategy::OnActivity),
+            make_action(1, 1, ec1.get_port(), RollbackStrategy::Immediate),
+            make_action(1, 2, ec2.get_port(), RollbackStrategy::OnActivity),
+            make_action(1, 3, ec3.get_port(), RollbackStrategy::OnActivity),
         ],
     ];
 
     let inhibition_sensor = MockInhibitionSensor::new();
-    let idleness_controller = IdlenessController::new(effect_bunches, inhibition_sensor.spawn());
+    let idleness_controller = IdlenessController::new(action_bunches, inhibition_sensor.spawn());
     let controller_port = spawn_server(idleness_controller).await.unwrap();
     // Moving to bunch 0
     controller_port.request(SystemState::Idle).await.unwrap();
-    assert_eq!(ec1.get_effect_count(), 1);
-    assert_eq!(ec2.get_effect_count(), 1);
-    assert_eq!(ec3.get_effect_count(), 0);
+    assert_eq!(ec1.ongoing_effect_count(), 1);
+    assert_eq!(ec2.ongoing_effect_count(), 1);
+    assert_eq!(ec3.ongoing_effect_count(), 0);
 
     // Rolling back
     controller_port
         .request(SystemState::Awakened)
         .await
         .unwrap();
-    assert_eq!(ec1.get_effect_count(), 0);
-    assert_eq!(ec2.get_effect_count(), 0);
-    assert_eq!(ec3.get_effect_count(), 0);
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(ec2.ongoing_effect_count(), 0);
+    assert_eq!(ec3.ongoing_effect_count(), 0);
 
     // Moving to bunch 0
     controller_port.request(SystemState::Idle).await.unwrap();
-    assert_eq!(ec1.get_effect_count(), 1);
-    assert_eq!(ec2.get_effect_count(), 1);
-    assert_eq!(ec3.get_effect_count(), 0);
+    assert_eq!(ec1.ongoing_effect_count(), 1);
+    assert_eq!(ec2.ongoing_effect_count(), 1);
+    assert_eq!(ec3.ongoing_effect_count(), 0);
 
     // Moving to bunch 1
     controller_port.request(SystemState::Idle).await.unwrap();
-    assert_eq!(ec1.get_effect_count(), 2);
-    assert_eq!(ec2.get_effect_count(), 1);
-    assert_eq!(ec3.get_effect_count(), 0);
+    assert_eq!(ec1.ongoing_effect_count(), 2);
+    assert_eq!(ec2.ongoing_effect_count(), 1);
+    assert_eq!(ec3.ongoing_effect_count(), 0);
 
     // Moving to bunch 2
     controller_port.request(SystemState::Idle).await.unwrap();
-    assert_eq!(ec1.get_effect_count(), 2);
-    assert_eq!(ec2.get_effect_count(), 2);
-    assert_eq!(ec3.get_effect_count(), 1);
+    assert_eq!(ec1.ongoing_effect_count(), 2);
+    assert_eq!(ec2.ongoing_effect_count(), 2);
+    assert_eq!(ec3.ongoing_effect_count(), 1);
 
     // Rolling back
     controller_port
         .request(SystemState::Awakened)
         .await
         .unwrap();
-    assert_eq!(ec1.get_effect_count(), 0);
-    assert_eq!(ec2.get_effect_count(), 0);
-    assert_eq!(ec3.get_effect_count(), 0);
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(ec2.ongoing_effect_count(), 0);
+    assert_eq!(ec3.ongoing_effect_count(), 0);
 }
 
 #[tokio::test]
 async fn test_inhibitions() {
     let ec1 = EffectsCounter::new();
     let ec2 = EffectsCounter::new();
-    let effect_bunches = vec![vec![
-        Effect::new(
-            "1-1".to_owned(),
-            vec![InhibitType::Shutdown, InhibitType::Sleep],
+    let action_bunches = vec![vec![
+        Action::new(
+            Effect::new(
+                "1-1".to_owned(),
+                vec![InhibitType::Shutdown, InhibitType::Sleep],
+                RollbackStrategy::OnActivity,
+            ),
             ec1.get_port(),
-            RollbackStrategy::OnActivity,
         ),
-        Effect::new(
-            "1-2".to_owned(),
-            vec![InhibitType::Idle],
+        Action::new(
+            Effect::new(
+                "1-2".to_owned(),
+                vec![InhibitType::Idle],
+                RollbackStrategy::OnActivity,
+            ),
             ec2.get_port(),
-            RollbackStrategy::OnActivity,
         ),
     ]];
 
     let inhibition_sensor = MockInhibitionSensor::new();
-    let idleness_controller = IdlenessController::new(effect_bunches, inhibition_sensor.spawn());
+    let idleness_controller = IdlenessController::new(action_bunches, inhibition_sensor.spawn());
     let controller_port = spawn_server(idleness_controller).await.unwrap();
 
     // Moving to bunch 0, shouldn't be inhibited, Delay inhibitors are ignored
@@ -201,16 +205,16 @@ async fn test_inhibitions() {
     inhibition_sensor
         .add_inhibitor_with_types(Mode::Delay, &vec![InhibitType::Shutdown, InhibitType::Idle]);
     controller_port.request(SystemState::Idle).await.unwrap();
-    assert_eq!(ec1.get_effect_count(), 1);
-    assert_eq!(ec2.get_effect_count(), 1);
+    assert_eq!(ec1.ongoing_effect_count(), 1);
+    assert_eq!(ec2.ongoing_effect_count(), 1);
 
     // Rolling back
     controller_port
         .request(SystemState::Awakened)
         .await
         .unwrap();
-    assert_eq!(ec1.get_effect_count(), 0);
-    assert_eq!(ec2.get_effect_count(), 0);
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(ec2.ongoing_effect_count(), 0);
 
     // Should not move to bunch 0, inhibited
     inhibition_sensor.reset();
@@ -219,8 +223,8 @@ async fn test_inhibitions() {
         .request(SystemState::Idle)
         .await
         .expect_err("Bunch applied even when inhibited");
-    assert_eq!(ec1.get_effect_count(), 0);
-    assert_eq!(ec2.get_effect_count(), 0);
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(ec2.ongoing_effect_count(), 0);
 
     // Should not move to bunch 0, inhibited - testing multiple overlapping inhibitors
     inhibition_sensor.reset();
@@ -231,16 +235,16 @@ async fn test_inhibitions() {
         .request(SystemState::Idle)
         .await
         .expect_err("Bunch applied even when inhibited");
-    assert_eq!(ec1.get_effect_count(), 0);
-    assert_eq!(ec2.get_effect_count(), 0);
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(ec2.ongoing_effect_count(), 0);
 
     // Move to bunch 0, unrelated inhibitors
     inhibition_sensor.reset();
     inhibition_sensor.add_inhibitor_with_types(Mode::Block, &vec![InhibitType::HandleHibernateKey]);
     inhibition_sensor.add_inhibitor_with_types(Mode::Block, &vec![InhibitType::HandleLidSwitch]);
     controller_port.request(SystemState::Idle).await.unwrap();
-    assert_eq!(ec1.get_effect_count(), 1);
-    assert_eq!(ec2.get_effect_count(), 1);
+    assert_eq!(ec1.ongoing_effect_count(), 1);
+    assert_eq!(ec2.ongoing_effect_count(), 1);
 
     // Rollback should not be affected by inhibitors
     inhibition_sensor.reset();
@@ -249,6 +253,6 @@ async fn test_inhibitions() {
         .request(SystemState::Awakened)
         .await
         .unwrap();
-    assert_eq!(ec1.get_effect_count(), 0);
-    assert_eq!(ec2.get_effect_count(), 0);
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(ec2.ongoing_effect_count(), 0);
 }
