@@ -1,5 +1,5 @@
 use crate::{
-    armaf::{ActorPort, EffectorMessage, EffectorPort, Server, Effect, RollbackStrategy},
+    armaf::{ActorPort, Effect, EffectorMessage, EffectorPort, RollbackStrategy, Server},
     external::display_server::SystemState,
     system::inhibition_sensor::GetInhibitions,
 };
@@ -8,16 +8,13 @@ use async_trait::async_trait;
 use logind_zbus::manager::{InhibitType, Inhibitor, Mode};
 
 pub struct Action {
-    effect: Effect, 
-    recipient: EffectorPort
+    effect: Effect,
+    recipient: EffectorPort,
 }
 
 impl Action {
     pub fn new(effect: Effect, recipient: EffectorPort) -> Action {
-        Action {
-            effect,
-            recipient
-        }
+        Action { effect, recipient }
     }
 }
 
@@ -58,9 +55,7 @@ impl IdlenessController {
                 continue;
             }
             match action.effect.rollback_strategy {
-                RollbackStrategy::OnActivity => {
-                    self.rollback_stack.push(action.recipient.clone())
-                }
+                RollbackStrategy::OnActivity => self.rollback_stack.push(action.recipient.clone()),
                 RollbackStrategy::Immediate => {
                     immediate_rollback_ports.push(action.recipient.clone())
                 }
