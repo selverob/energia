@@ -14,7 +14,7 @@ async fn test_happy_path() {
     let mut factory = dbus::ConnectionFactory::new();
     let test_connection = factory.get_system().await.unwrap();
     let session_proxy = get_session_proxy(&test_connection).await.unwrap();
-    let port = spawn_server(session_effector::SessionEffector::new(
+    let port = spawn_server(session_effector::SessionEffectorActor::new(
         factory.get_system().await.unwrap(),
     ))
     .await
