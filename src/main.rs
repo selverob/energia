@@ -13,6 +13,8 @@ use external::dependency_provider::DependencyProvider;
 use std::env;
 use tokio::{self, fs};
 
+use crate::system::upower_sensor::UPowerSensor;
+
 #[tokio::main]
 async fn main() {
     env::set_var("RUST_LOG", "trace");
@@ -22,12 +24,22 @@ async fn main() {
         .expect("Couldn't read config file");
     let config: toml::Value = toml::from_slice(&config_bytes).expect("Config parsing failuer");
     log::info!("Parsed config is: {:?}", config);
-    let system_dependencies = DependencyProvider::make_system()
+    let mut system_dependencies = DependencyProvider::make_system()
         .await
         .expect("Couldn't construct dependency provider");
-    let environment_controller = EnvironmentController::new(&config, system_dependencies)
-        .expect("Couldn't construct environment controller");
+    let upower_channel = UPowerSensor::new(
+        system_dependencies
+            .get_dbus_system_connection()
+            .await
+            .expect("Couldn't get connection to system DBus"),
+    )
+    .await
+    .expect("Couldn't start UPower sensor");
+    let environment_controller =
+        EnvironmentController::new(&config, system_dependencies, upower_channel)
+            .expect("Couldn't construct environment controller");
     let handle = environment_controller.spawn().await;
     tokio::signal::ctrl_c().await.expect("Signal wait failed");
     drop(handle);
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 }

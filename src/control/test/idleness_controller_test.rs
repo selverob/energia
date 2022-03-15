@@ -9,7 +9,7 @@ use crate::{
     armaf::{spawn_server, ActorPort, Effect, EffectorPort, RollbackStrategy},
     control::idleness_controller::{Action, IdlenessController},
     external::display_server::SystemState,
-    system::inhibition_sensor::{GetInhibitions},
+    system::inhibition_sensor::GetInhibitions,
 };
 struct EffectsCounter {
     running_effects: Arc<Mutex<Cell<isize>>>,

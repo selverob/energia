@@ -5,43 +5,46 @@ use crate::{
         brightness::BrightnessController, dependency_provider::DependencyProvider,
         display_server::DisplayServer,
     },
-    system::{self, inhibition_sensor::InhibitionSensor, sequencer::Sequencer},
+    system::{
+        self, inhibition_sensor::InhibitionSensor, sequencer::Sequencer, upower_sensor::PowerSource,
+    },
 };
 use anyhow::{anyhow, Context, Result};
 use std::{collections::HashMap, time::Duration};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 type Schedule = HashMap<String, Duration>;
 
 pub struct EnvironmentController<B: BrightnessController, D: DisplayServer> {
     config: toml::Value,
-    schedule_external: Option<Schedule>,
-    schedule_battery: Option<Schedule>,
+    schedules: HashMap<PowerSource, Schedule>,
     effect_names_mapping: HashMap<String, (String, usize)>,
     spawned_effectors: HashMap<String, EffectorPort>,
     dependency_provider: DependencyProvider<B, D>,
     termination_receiver: Option<oneshot::Receiver<()>>,
+    power_source_receiver: watch::Receiver<PowerSource>,
 }
 
 impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
     pub fn new(
         config: &toml::Value,
         dependency_provider: DependencyProvider<B, D>,
+        power_source_receiver: watch::Receiver<PowerSource>,
     ) -> Result<EnvironmentController<B, D>> {
-        let (schedule_external, schedule_battery) = Self::parse_schedules(&config)?;
-        if schedule_external.is_none() && schedule_battery.is_none() {
+        let schedules = Self::parse_schedules(&config)?;
+        if schedules.len() == 0 {
             return Err(anyhow!(
                 "No schedule defined. Define either schedule.external or schedule.battery."
             ));
         }
         Ok(EnvironmentController {
             config: config.clone(),
-            schedule_external,
-            schedule_battery,
+            schedules,
             effect_names_mapping: Self::resolve_effectors_for_effects(),
             spawned_effectors: HashMap::new(),
             dependency_provider,
             termination_receiver: None,
+            power_source_receiver,
         })
     }
 
@@ -50,9 +53,6 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
         log::trace!("{:?}", self.effect_names_mapping);
         self.termination_receiver = Some(receiver);
         tokio::spawn(async move {
-            // We're ignoring errors here, since any error other than channel
-            // closure should be handled in main_loop and channel closures mean
-            // we can terminate
             if let Err(e) = self.main_loop().await {
                 log::error!("Error in environment controller: {}", e);
             }
@@ -61,28 +61,52 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
     }
 
     async fn main_loop(&mut self) -> Result<()> {
-        // TODO: Reimplement once we have power source detection implemented
-        let bunches_and_timeouts = self
-            .bunches_and_timeouts_for_schedule(self.schedule_external.as_ref().unwrap())
-            .expect("Couldn't launch all effectors");
-        let (durations, effects) = bunches_and_timeouts.into_iter().unzip();
-        let actions = self.effects_to_actions(&effects).await?;
         let inhibition_sensor = spawn_server(InhibitionSensor::new(
             self.dependency_provider
                 .get_dbus_system_connection()
                 .await?,
         ))
         .await?;
-        let idleness_controller = IdlenessController::new(actions, inhibition_sensor);
-        let sequencer = Sequencer::new(
-            spawn_server(idleness_controller).await?,
-            self.dependency_provider.get_display_controller(),
-            self.dependency_provider.get_idleness_channel(),
-            &durations_to_timeouts(&durations),
-        );
-        let _handle = sequencer.spawn().await?;
-        let _ = self.termination_receiver.as_mut().unwrap().await;
-        Ok(())
+        loop {
+            let power_source = *self.power_source_receiver.borrow_and_update();
+            log::info!("New power source is {:?}", power_source);
+            let schedule = if self.schedules.contains_key(&power_source) {
+                &self.schedules[&power_source]
+            } else {
+                log::warn!(
+                    "Schedule for power source {:?} is not defined, using a fallback schedule.",
+                    power_source
+                );
+                self.fallback_schedule()
+            };
+
+            let bunches_and_timeouts = self
+                .bunches_and_timeouts_for_schedule(schedule)
+                .expect("Couldn't launch all effectors");
+            let (durations, effects) = bunches_and_timeouts.into_iter().unzip();
+            let actions = self.effects_to_actions(&effects).await?;
+
+            let idleness_controller = IdlenessController::new(actions, inhibition_sensor.clone());
+            let sequencer = Sequencer::new(
+                spawn_server(idleness_controller).await?,
+                self.dependency_provider.get_display_controller(),
+                self.dependency_provider.get_idleness_channel(),
+                &durations_to_timeouts(&durations),
+            );
+            let _handle = sequencer.spawn().await?;
+            tokio::select! {
+                _ = self.termination_receiver.as_mut().unwrap() => {
+                    log::info!("Handle dropped, terminating");
+                    return Ok(());
+                }
+                _ = self.power_source_receiver.changed() => {}
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+
+    fn fallback_schedule(&self) -> &Schedule {
+        self.schedules.iter().next().unwrap().1
     }
 
     fn resolve_effectors_for_effects() -> HashMap<String, (String, usize)> {
@@ -100,36 +124,40 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
         m
     }
 
-    fn parse_schedules(config: &toml::Value) -> Result<(Option<Schedule>, Option<Schedule>)> {
+    fn parse_schedules(config: &toml::Value) -> Result<HashMap<PowerSource, Schedule>> {
+        let mut schedules = HashMap::new();
+
         let empty_placeholder = toml::Value::String(String::new());
         let schedule_dict = config.get("schedule").unwrap_or(&empty_placeholder);
-        log::debug!("{:?}", schedule_dict);
-        let external_schedule = if let Some(external_config) = schedule_dict.get("external") {
-            Some(Self::parse_schedule(external_config.as_table().ok_or(
-                anyhow!("Schedule should be a table, not a scalar or array"),
-            )?)?)
-        } else {
-            log::debug!("No external schedule found");
-            None
-        };
-        let battery_schedule = if let Some(battery_config) = schedule_dict.get("battery") {
-            Some(Self::parse_schedule(battery_config.as_table().ok_or(
-                anyhow!("Schedule should be a table, not a scalar or array"),
-            )?)?)
-        } else {
-            log::debug!("No battery schedule found");
-            None
-        };
-        Ok((external_schedule, battery_schedule))
+
+        let possible_schedules = vec![
+            ("battery", PowerSource::Battery),
+            ("external", PowerSource::External),
+        ];
+        for (key, power_source) in possible_schedules {
+            if let Some(schedule_config) = schedule_dict.get(key) {
+                let schedule = Self::parse_schedule(schedule_config)?;
+                schedules.insert(power_source, schedule);
+            } else {
+                log::debug!("No {} schedule found", key);
+            };
+        }
+        Ok(schedules)
     }
 
-    fn parse_schedule(schedule_config: &toml::value::Table) -> Result<Schedule> {
+    fn parse_schedule(schedule_config: &toml::Value) -> Result<Schedule> {
+        let table = schedule_config
+            .as_table()
+            .ok_or(anyhow!("Schedule should be a table, not a scalar or array"))?;
         let mut m = HashMap::new();
-        for (key, value) in schedule_config {
+        for (key, value) in table {
             if let Some(value_str) = value.as_str() {
                 m.insert(key.to_string(), parse_duration(value_str)?);
             } else {
-                return Err(anyhow!("schedule key is not a string in duration format"));
+                return Err(anyhow!(
+                    "timeout for {} is not a string in duration format",
+                    key
+                ));
             }
         }
         Ok(m)
