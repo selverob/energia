@@ -133,6 +133,10 @@ impl Server<SystemState, ()> for IdlenessController {
         }
         Ok(())
     }
+
+    async fn tear_down(&mut self) -> Result<()> {
+        self.handle_wakeup().await
+    }
 }
 
 fn find_inhibitors_with_type(

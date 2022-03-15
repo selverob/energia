@@ -7,45 +7,27 @@ mod control;
 mod external;
 mod system;
 
+use control::environment_controller::EnvironmentController;
 use env_logger;
-use std::{env, time::Duration};
-use tokio;
+use external::dependency_provider::DependencyProvider;
+use std::env;
+use tokio::{self, fs};
 
-// #[tokio::main]
-// async fn main() {
-//     env::set_var("RUST_LOG", "debug");
-//     env_logger::init();
-//     let idleness_controller = control::idleness_controller::spawn(vec![]);
-//     tokio::time::sleep(Duration::from_secs(30)).await;
-//     idleness_controller
-//         .request(control::idleness_controller::Stop)
-//         .await;
-// }
-
-use anyhow::Result;
-// use external::idleness;
-// use external::idleness::interface::IdlenessMonitor;
-// use log::info;
-// use std::thread::sleep;
-// use std::time::Instant;
-// use std::time::Duration;
-// use zbus;
-// use zvariant::OwnedObjectPath;
-
-fn main() -> Result<()> {
-    Ok(())
-    // env::set_var("RUST_LOG", "debug");
-    // env_logger::init();
-    // let mut monitor = idleness::x11::X11IdlenessMonitor::new(None)?;
-    // monitor.set_idleness_timeout(7)?;
-    // info!("Idleness timeout set");
-    // let mut receiver = monitor.get_idleness_channel();
-    // for _ in 0..2 {
-    //     while !receiver.has_changed()? {}
-    //     info!(
-    //         "Got screensaver event, system is {:?}",
-    //         receiver.borrow_and_update()
-    //     );
-    // }
-    // monitor.set_idleness_timeout(-1)
+#[tokio::main]
+async fn main() {
+    env::set_var("RUST_LOG", "trace");
+    env_logger::init();
+    let config_bytes = fs::read("config.toml")
+        .await
+        .expect("Couldn't read config file");
+    let config: toml::Value = toml::from_slice(&config_bytes).expect("Config parsing failuer");
+    log::info!("Parsed config is: {:?}", config);
+    let system_dependencies = DependencyProvider::make_system()
+        .await
+        .expect("Couldn't construct dependency provider");
+    let environment_controller = EnvironmentController::new(&config, system_dependencies)
+        .expect("Couldn't construct environment controller");
+    let handle = environment_controller.spawn().await;
+    tokio::signal::ctrl_c().await.expect("Signal wait failed");
+    drop(handle);
 }

@@ -1,6 +1,6 @@
 //! Type definitions for implementation of Effectors.
 
-use super::{ActorPort, Request};
+use super::ActorPort;
 use crate::external::{
     brightness::BrightnessController, dependency_provider::DependencyProvider,
     display_server::DisplayServer,
@@ -16,7 +16,6 @@ pub enum EffectorMessage {
 }
 
 pub type EffectorPort = ActorPort<EffectorMessage, (), anyhow::Error>;
-pub type EffectorRequest = Request<EffectorMessage, (), anyhow::Error>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum RollbackStrategy {
@@ -24,7 +23,7 @@ pub enum RollbackStrategy {
     Immediate,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Effect {
     pub name: String,
     pub inhibited_by: Vec<InhibitType>,
@@ -46,11 +45,19 @@ impl Effect {
 }
 
 #[async_trait]
-pub trait Effector: Send {
-    fn get_effects(&self) -> Vec<Effect>;
+pub trait Effector: Send + Sync + 'static {
+    // The Self: Sized constraints on each method are to make this trait object-safe,
+    // since storing effectors as trait objects is its basic rationale
+
+    fn get_effects(&self) -> Vec<Effect>
+    where
+        Self: Sized;
+
     async fn spawn<B: BrightnessController, D: DisplayServer>(
-        self,
+        &self,
         config: Option<toml::Value>,
         provider: &mut DependencyProvider<B, D>,
-    ) -> Result<EffectorPort>;
+    ) -> Result<EffectorPort>
+    where
+        Self: Sized;
 }

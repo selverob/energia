@@ -33,7 +33,7 @@ impl Effector for SessionEffector {
     }
 
     async fn spawn<B: BrightnessController, D: ds::DisplayServer>(
-        self,
+        &self,
         _: Option<toml::Value>,
         provider: &mut DependencyProvider<B, D>,
     ) -> Result<EffectorPort> {

@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use crate::{
     armaf::{
         spawn_server, Effect, Effector, EffectorMessage, EffectorPort, RollbackStrategy, Server,
@@ -34,7 +32,7 @@ impl Effector for DisplayEffector {
     }
 
     async fn spawn<B: BrightnessController, D: ds::DisplayServer>(
-        self,
+        &self,
         _: Option<toml::Value>,
         provider: &mut DependencyProvider<B, D>,
     ) -> Result<EffectorPort> {
