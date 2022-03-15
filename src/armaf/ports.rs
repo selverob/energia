@@ -133,3 +133,23 @@ impl<P, R, E: Debug> ActorPort<P, R, E> {
         }
     }
 }
+
+/// A handle which allows signalizing termination / drop to actors
+/// 
+/// This handle contains a [oneshot::Sender] which is closed once the handle is
+/// dropped. Thus, an actor can await an error on the [oneshot::Receiver]
+/// returned from the [Handle::new()] method and interpret it as a signal to
+/// terminate itself.
+pub struct Handle(oneshot::Sender<()>);
+
+impl Handle {
+
+    /// Create a new Handle and return it and its associated receiver.
+    /// 
+    /// The handle should be returned to the spawning actor while the actor which
+    /// wants to be notified about its drop should keep the returned [oneshot::Receiver]
+    pub fn new() -> (Handle, oneshot::Receiver<()>) {
+        let (sender, receiver) = oneshot::channel();
+        (Handle(sender), receiver)
+    }
+}

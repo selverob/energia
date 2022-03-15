@@ -98,3 +98,10 @@ fn spawn_two_increments_one_error() -> ports::ActorPort<TestActorMessage, usize,
     });
     port
 }
+
+#[test]
+fn test_handle_creation() {
+    let (handle, receiver) = ports::Handle::new();
+    drop(handle);
+    assert!(receiver.blocking_recv().is_err());
+}

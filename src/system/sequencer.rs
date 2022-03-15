@@ -11,8 +11,6 @@ use tokio::{
     sync::{oneshot, watch},
 };
 
-pub struct SequencerHandle(oneshot::Sender<()>);
-
 #[derive(Debug, Copy, Clone, Error)]
 #[error("SequencerHandle dropped, actor must terminate")]
 struct HandleDropped;
@@ -45,8 +43,8 @@ impl<C: DisplayServerController> Sequencer<C> {
         }
     }
 
-    pub async fn spawn(mut self) -> Result<SequencerHandle> {
-        let (termination_sender, termination_receiver) = oneshot::channel();
+    pub async fn spawn(mut self) -> Result<armaf::Handle> {
+        let (handle, termination_receiver) = armaf::Handle::new();
         self.termination_receiver = Some(termination_receiver);
         self.initialize().await?;
 
@@ -60,7 +58,7 @@ impl<C: DisplayServerController> Sequencer<C> {
             }
         });
 
-        Ok(SequencerHandle(termination_sender))
+        Ok(handle)
     }
 
     async fn initialize(&mut self) -> Result<()> {
