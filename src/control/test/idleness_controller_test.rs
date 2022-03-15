@@ -7,9 +7,9 @@ use logind_zbus::manager::{InhibitType, InhibitTypes, Inhibitor, Mode};
 
 use crate::{
     armaf::{spawn_server, ActorPort, Effect, EffectorPort, RollbackStrategy},
-    control::idleness_controller::{self, Action, IdlenessController},
+    control::idleness_controller::{Action, IdlenessController},
     external::display_server::SystemState,
-    system::inhibition_sensor::{self, GetInhibitions},
+    system::inhibition_sensor::{GetInhibitions},
 };
 struct EffectsCounter {
     running_effects: Arc<Mutex<Cell<isize>>>,

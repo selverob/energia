@@ -1,5 +1,3 @@
-use std::borrow::Borrow;
-
 use crate::{
     external::dbus::ConnectionFactory,
     system::upower_sensor::{PowerSource, UPowerSensor},
