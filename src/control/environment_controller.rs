@@ -11,7 +11,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Result};
 use std::{collections::HashMap, time::Duration};
-use tokio::sync::{oneshot, watch};
+use tokio::sync::watch;
 
 type Schedule = HashMap<String, Duration>;
 
@@ -93,7 +93,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
                 self.dependency_provider.get_idleness_channel(),
                 &durations_to_timeouts(&durations),
             );
-            let _handle = sequencer.spawn().await?;
+            let sequencer_handle = sequencer.spawn().await?;
             tokio::select! {
                 _ = self.handle_child.as_mut().unwrap().should_terminate() => {
                     log::info!("Handle dropped, terminating");
@@ -101,7 +101,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
                 }
                 _ = self.power_source_receiver.changed() => {}
             }
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            sequencer_handle.await_shutdown().await;
         }
     }
 

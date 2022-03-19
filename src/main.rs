@@ -40,6 +40,6 @@ async fn main() {
             .expect("Couldn't construct environment controller");
     let handle = environment_controller.spawn().await;
     tokio::signal::ctrl_c().await.expect("Signal wait failed");
-    drop(handle);
+    handle.await_shutdown().await;
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 }

@@ -45,6 +45,7 @@ async fn test_complete_sequence() {
     sleep(Duration::from_secs(1)).await;
     assert!(receiver.request_receiver.try_recv().is_err());
 
+    drop(receiver);
     handle.await_shutdown().await;
     assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 600);
 }
@@ -94,8 +95,8 @@ async fn test_interruptions() {
         .unwrap();
     assert_request_came(&mut receiver, SystemState::Awakened, Ok(())).await;
 
-    drop(handle);
-    sleep(Duration::from_millis(100)).await;
+    drop(receiver);
+    handle.await_shutdown().await;
     assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 600);
 }
 
@@ -153,8 +154,8 @@ async fn test_actor_errors() {
     assert_request_came(&mut receiver, SystemState::Awakened, Ok(())).await;
     assert!(receiver.request_receiver.try_recv().is_err());
 
-    drop(handle);
-    sleep(Duration::from_millis(100)).await;
+    drop(receiver);
+    handle.await_shutdown().await;
     assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 600);
 }
 

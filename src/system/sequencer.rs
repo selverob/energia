@@ -6,10 +6,7 @@ use anyhow::{Context, Result};
 use log;
 use std::time::Duration;
 use thiserror::Error;
-use tokio::{
-    select,
-    sync::{oneshot, watch},
-};
+use tokio::{select, sync::watch};
 
 #[derive(Debug, Copy, Clone, Error)]
 #[error("SequencerHandle dropped, actor must terminate")]
@@ -171,11 +168,13 @@ impl<C: DisplayServerController> Sequencer<C> {
         Ok(())
     }
 
-    async fn tear_down(&mut self) -> Result<()> {
+    async fn tear_down(self) -> Result<()> {
         log::debug!("Tearing down");
-        Ok(self
+        let reset_result = self
             .set_ds_timeout(self.original_timeout.unwrap_or(-1i16))
-            .await?)
+            .await;
+        self.port.await_shutdown().await;
+        reset_result
     }
 
     async fn force_activity(&mut self) {
