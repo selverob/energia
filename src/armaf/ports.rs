@@ -229,9 +229,20 @@ impl Handle {
     }
 }
 
+/// The side of the handle belonging to the child actor.
+///
+/// This struct can be used to check whether the parent actor requested the
+/// actor to terminate. Since it's based on [ActorPort], same caveats apply - it
+/// should never be dropped during actor operation or while clean up is still
+/// pending.
 pub struct HandleChild(ActorReceiver<(), (), ()>);
 
 impl HandleChild {
+    /// Wait until the parent [Handle] is dropped or its
+    /// [await_shutdown](`Handle::await_shutdown`) method is called.
+    ///
+    /// Since this function will not return until these conditions are
+    /// fulfilled, you should call it within a [tokio::select!] block.
     pub async fn should_terminate(&mut self) {
         let res = self.0.recv().await;
         assert!(res.is_none());
