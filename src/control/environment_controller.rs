@@ -1,6 +1,6 @@
 use super::idleness_controller::{Action, IdlenessController};
 use crate::{
-    armaf::{spawn_server, Effect, Effector, EffectorPort, Handle},
+    armaf::{spawn_server, Effect, Effector, EffectorPort, Handle, HandleChild},
     external::{
         brightness::BrightnessController, dependency_provider::DependencyProvider,
         display_server::DisplayServer,
@@ -21,7 +21,7 @@ pub struct EnvironmentController<B: BrightnessController, D: DisplayServer> {
     effect_names_mapping: HashMap<String, (String, usize)>,
     spawned_effectors: HashMap<String, EffectorPort>,
     dependency_provider: DependencyProvider<B, D>,
-    termination_receiver: Option<oneshot::Receiver<()>>,
+    handle_child: Option<HandleChild>,
     power_source_receiver: watch::Receiver<PowerSource>,
 }
 
@@ -43,7 +43,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
             effect_names_mapping: Self::resolve_effectors_for_effects(),
             spawned_effectors: HashMap::new(),
             dependency_provider,
-            termination_receiver: None,
+            handle_child: None,
             power_source_receiver,
         })
     }
@@ -51,7 +51,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
     pub async fn spawn(mut self) -> Handle {
         let (handle, receiver) = Handle::new();
         log::trace!("{:?}", self.effect_names_mapping);
-        self.termination_receiver = Some(receiver);
+        self.handle_child = Some(receiver);
         tokio::spawn(async move {
             if let Err(e) = self.main_loop().await {
                 log::error!("Error in environment controller: {}", e);
@@ -95,7 +95,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
             );
             let _handle = sequencer.spawn().await?;
             tokio::select! {
-                _ = self.termination_receiver.as_mut().unwrap() => {
+                _ = self.handle_child.as_mut().unwrap().should_terminate() => {
                     log::info!("Handle dropped, terminating");
                     return Ok(());
                 }
@@ -311,6 +311,7 @@ fn durations_to_timeouts(durations: &Vec<Duration>) -> Vec<u64> {
     timeouts
 }
 
+#[cfg(test)]
 mod test {
     use super::*;
 

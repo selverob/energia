@@ -146,7 +146,7 @@ impl<P, R, E: Debug> ActorPort<P, R, E> {
     }
 
     /// Await actor termination
-    /// 
+    ///
     /// Drops this port's message sender and waits until all the other clones of
     /// this ActorPort are dropped or have this method called and the actor
     /// terminates. An actor is considered to terminate once it drops its
@@ -166,10 +166,10 @@ impl<P, R, E: Debug> ActorPort<P, R, E> {
 }
 
 /// The receiving side of an [ActorPort].
-/// 
+///
 /// Contains a [mpsc::Receiver] which can either be used directly or which can
 /// be called through the convenience `recv` method on this struct.
-/// 
+///
 /// This struct also handles termination notification for [ActorPorts](ActorPort), thus the
 /// dropping this struct must be the last thing an actor does. Performing any
 /// operations after that will break [`ActorPort::await_shutdown`].
@@ -180,7 +180,6 @@ pub struct ActorReceiver<P, R, E: Debug> {
 }
 
 impl<P, R, E: Debug> ActorReceiver<P, R, E> {
-
     /// Create a new [ActorReceiver]
     pub fn new(
         request_receiver: mpsc::Receiver<Request<P, R, E>>,
@@ -193,7 +192,7 @@ impl<P, R, E: Debug> ActorReceiver<P, R, E> {
     }
 
     /// Call the recv method on this struct's request_receiver.
-    /// 
+    ///
     /// The semantics of this method are exactly the same as the semantics of
     /// [mpsc::Receiver]'s recv method.
     pub async fn recv(&mut self) -> Option<Request<P, R, E>> {
@@ -201,21 +200,40 @@ impl<P, R, E: Debug> ActorReceiver<P, R, E> {
     }
 }
 
-/// A handle which allows signalizing termination / drop to actors
+/// A handle which allows signalizing termination / drop to actors and waiting
+/// for their termination.
+///
+/// You can consider a Handle to be a specific kind of [ActorPort] which
+/// enforces single-parent semantics (i.e. an actor has a specific parent actor
+/// which handles its lifecycle) and doesn't support sending any messages apart
+/// from the termination signal to the actor.
 ///
 /// This handle contains a [oneshot::Sender] which is closed once the handle is
 /// dropped. Thus, an actor can await an error on the [oneshot::Receiver]
 /// returned from the [Handle::new()] method and interpret it as a signal to
 /// terminate itself.
-pub struct Handle(oneshot::Sender<()>);
+pub struct Handle(ActorPort<(), (), ()>);
 
 impl Handle {
     /// Create a new Handle and return it and its associated receiver.
     ///
     /// The handle should be returned to the spawning actor while the actor which
     /// wants to be notified about its drop should keep the returned [oneshot::Receiver]
-    pub fn new() -> (Handle, oneshot::Receiver<()>) {
-        let (sender, receiver) = oneshot::channel();
-        (Handle(sender), receiver)
+    pub fn new() -> (Handle, HandleChild) {
+        let (port, receiver) = ActorPort::make();
+        (Handle(port), HandleChild(receiver))
+    }
+
+    pub async fn await_shutdown(self) {
+        self.0.await_shutdown().await
+    }
+}
+
+pub struct HandleChild(ActorReceiver<(), (), ()>);
+
+impl HandleChild {
+    pub async fn should_terminate(&mut self) {
+        let res = self.0.recv().await;
+        assert!(res.is_none());
     }
 }

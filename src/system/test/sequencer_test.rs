@@ -6,7 +6,7 @@ use crate::{
     system::sequencer::Sequencer,
 };
 use anyhow::{anyhow, Result};
-use tokio::{self, sync::mpsc, time::sleep};
+use tokio::{self, time::sleep};
 
 #[tokio::test]
 async fn test_complete_sequence() {
@@ -45,8 +45,7 @@ async fn test_complete_sequence() {
     sleep(Duration::from_secs(1)).await;
     assert!(receiver.request_receiver.try_recv().is_err());
 
-    drop(handle);
-    sleep(Duration::from_millis(100)).await;
+    handle.await_shutdown().await;
     assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 600);
 }
 

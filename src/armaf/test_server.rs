@@ -73,7 +73,7 @@ async fn test_response_failure() {
     assert_eq!(port.request(()).await.unwrap(), 1);
     assert_eq!(port.request(()).await.unwrap(), 2);
     assert!(port.request(()).await.is_err());
-    drop(port); // tear_down should be called 
+    drop(port); // tear_down should be called
     notifier
         .recv()
         .await
