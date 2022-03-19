@@ -1,13 +1,19 @@
-use std::time::Duration;
-
-use crate::external::display_server::SystemState;
 use crate::{
     armaf::{self, ActorRequestError},
-    external::display_server::DisplayServerController,
+    external::display_server::{DisplayServerController, SystemState},
 };
 use anyhow::{Context, Result};
 use log;
-use tokio::sync::{broadcast, watch};
+use std::time::Duration;
+use thiserror::Error;
+use tokio::{
+    select,
+    sync::{oneshot, watch},
+};
+
+#[derive(Debug, Copy, Clone, Error)]
+#[error("SequencerHandle dropped, actor must terminate")]
+struct HandleDropped;
 
 pub struct Sequencer<C: DisplayServerController> {
     timeout_sequence: Vec<u64>,
@@ -16,6 +22,7 @@ pub struct Sequencer<C: DisplayServerController> {
     state_channel: watch::Receiver<SystemState>,
     original_timeout: Option<i16>,
     port: armaf::ActorPort<SystemState, (), anyhow::Error>,
+    termination_receiver: Option<oneshot::Receiver<()>>,
 }
 
 impl<C: DisplayServerController> Sequencer<C> {
@@ -32,10 +39,13 @@ impl<C: DisplayServerController> Sequencer<C> {
             state_channel,
             original_timeout: None,
             port: receiver_port,
+            termination_receiver: None,
         }
     }
 
-    pub async fn spawn(mut self) -> Result<()> {
+    pub async fn spawn(mut self) -> Result<armaf::Handle> {
+        let (handle, termination_receiver) = armaf::Handle::new();
+        self.termination_receiver = Some(termination_receiver);
         self.initialize().await?;
 
         tokio::spawn(async move {
@@ -48,7 +58,7 @@ impl<C: DisplayServerController> Sequencer<C> {
             }
         });
 
-        Ok(())
+        Ok(handle)
     }
 
     async fn initialize(&mut self) -> Result<()> {
@@ -113,11 +123,15 @@ impl<C: DisplayServerController> Sequencer<C> {
         no_propagate: bool,
     ) -> Result<()> {
         log::debug!("Waiting for display server signal");
-        self.state_channel
-            .changed()
-            .await
-            .context("Display server idleness channel dropped")?;
         loop {
+            select! {
+                res = self.state_channel.changed() => {
+                    res.context("Idleness channel wait failed. Channel closed?")?;
+                }
+                Err(_) = self.termination_receiver.as_mut().unwrap() => {
+                    return Err(anyhow::Error::new(HandleDropped))
+                }
+            }
             let received_state = *self.state_channel.borrow_and_update();
             if received_state != expected_state {
                 log::error!("Received an unexpected state {:?} from display server, is something else setting the timeouts?", received_state);
@@ -149,12 +163,16 @@ impl<C: DisplayServerController> Sequencer<C> {
                 } else {
                     log::error!("Received an unexpected idle from display server, is something else setting the timeouts?");
                 }
+            },
+            Err(_) = self.termination_receiver.as_mut().unwrap() => {
+                return Err(anyhow::Error::new(HandleDropped))
             }
         };
         Ok(())
     }
 
     async fn tear_down(&mut self) -> Result<()> {
+        log::debug!("Tearing down");
         Ok(self
             .set_ds_timeout(self.original_timeout.unwrap_or(-1i16))
             .await?)
@@ -176,6 +194,10 @@ impl<C: DisplayServerController> Sequencer<C> {
     }
 
     fn is_terminating_error(e: anyhow::Error) -> bool {
+        if e.downcast_ref::<HandleDropped>().is_some() {
+            log::debug!("Handle dropped - terminating actor.");
+            return true;
+        }
         match e.downcast_ref::<ActorRequestError<anyhow::Error>>() {
             Some(are) => match are {
                 ActorRequestError::ActorError(actor_error) => {

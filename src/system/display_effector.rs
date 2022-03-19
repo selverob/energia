@@ -1,51 +1,46 @@
-use crate::armaf::{EffectorMessage, Server};
-use crate::external::brightness::BrightnessController;
-use crate::external::display_server::{self as ds, DisplayServerController};
+use crate::{
+    armaf::{
+        spawn_server, Effect, Effector, EffectorMessage, EffectorPort, RollbackStrategy, Server,
+    },
+    external::{
+        brightness::BrightnessController,
+        dependency_provider::DependencyProvider,
+        display_server::{self as ds, DisplayServerController},
+    },
+};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use logind_zbus::manager::InhibitType;
 
-/// Stores display server configuration, so that it can be restored once the
-/// actor terminates
-#[derive(Clone, Copy)]
-struct ServerConfiguration {
-    level: Option<ds::DPMSLevel>,
-    timeouts: ds::DPMSTimeouts,
-}
+pub struct DisplayEffector;
 
-impl ServerConfiguration {
-    async fn fetch<C: DisplayServerController>(controller: &C) -> Result<ServerConfiguration> {
-        let level_controller = controller.clone();
-        let level_handle = tokio::task::spawn_blocking(move || level_controller.get_dpms_level());
-
-        let timeouts_controller = controller.clone();
-        let timeouts_handle =
-            tokio::task::spawn_blocking(move || timeouts_controller.get_dpms_timeouts());
-
-        Ok(ServerConfiguration {
-            level: level_handle.await??,
-            timeouts: timeouts_handle.await??,
-        })
+#[async_trait]
+impl Effector for DisplayEffector {
+    fn get_effects(&self) -> Vec<Effect> {
+        vec![
+            Effect::new(
+                "screen_dim".to_owned(),
+                vec![InhibitType::Idle],
+                RollbackStrategy::OnActivity,
+            ),
+            Effect::new(
+                "screen_off".to_owned(),
+                vec![InhibitType::Idle],
+                RollbackStrategy::OnActivity,
+            ),
+        ]
     }
 
-    async fn apply<C: ds::DisplayServerController>(self, controller: &C) -> Result<()> {
-        let level_controller = controller.clone();
-        let level_handle = if let Some(level) = self.level {
-            tokio::task::spawn_blocking(move || -> Result<()> {
-                level_controller.set_dpms_state(true)?;
-                level_controller.set_dpms_level(level)?;
-                Ok(())
-            })
-        } else {
-            tokio::task::spawn_blocking(move || level_controller.set_dpms_state(false))
-        };
-
-        let timeouts_controller = controller.clone();
-        let timeouts_handle = tokio::task::spawn_blocking(move || {
-            timeouts_controller.set_dpms_timeouts(self.timeouts)
-        });
-
-        level_handle.await??; // Not exactly the most elegant error handling, but eh. If this fails, it's not a catastrophe, more like a bit annoying.
-        Ok(timeouts_handle.await??)
+    async fn spawn<B: BrightnessController, D: ds::DisplayServer>(
+        &self,
+        _: Option<toml::Value>,
+        provider: &mut DependencyProvider<B, D>,
+    ) -> Result<EffectorPort> {
+        let actor = DisplayEffectorActor::new(
+            provider.get_brightness_controller(),
+            provider.get_display_controller(),
+        );
+        spawn_server(actor).await
     }
 }
 
@@ -56,7 +51,7 @@ pub enum DisplayState {
     Off,
 }
 
-pub struct DisplayEffector<B: BrightnessController, D: ds::DisplayServerController> {
+pub struct DisplayEffectorActor<B: BrightnessController, D: ds::DisplayServerController> {
     current_state: DisplayState,
     brightness_controller: B,
     ds_controller: D,
@@ -64,9 +59,9 @@ pub struct DisplayEffector<B: BrightnessController, D: ds::DisplayServerControll
     original_brightness: Option<usize>,
 }
 
-impl<B: BrightnessController, D: ds::DisplayServerController> DisplayEffector<B, D> {
-    pub fn new(brightness_controller: B, ds_controller: D) -> DisplayEffector<B, D> {
-        DisplayEffector {
+impl<B: BrightnessController, D: ds::DisplayServerController> DisplayEffectorActor<B, D> {
+    pub fn new(brightness_controller: B, ds_controller: D) -> DisplayEffectorActor<B, D> {
+        DisplayEffectorActor {
             current_state: DisplayState::On,
             brightness_controller,
             ds_controller,
@@ -104,7 +99,7 @@ impl<B: BrightnessController, D: ds::DisplayServerController> DisplayEffector<B,
 
 #[async_trait]
 impl<B: BrightnessController, D: ds::DisplayServerController> Server<EffectorMessage, ()>
-    for DisplayEffector<B, D>
+    for DisplayEffectorActor<B, D>
 {
     fn get_name(&self) -> String {
         "DisplayEffector".to_owned()
@@ -159,5 +154,50 @@ impl<B: BrightnessController, D: ds::DisplayServerController> Server<EffectorMes
             self.brightness_controller.set_brightness(b).await?;
         }
         Ok(())
+    }
+}
+
+/// Stores display server configuration, so that it can be restored once the
+/// actor terminates
+#[derive(Clone, Copy)]
+struct ServerConfiguration {
+    level: Option<ds::DPMSLevel>,
+    timeouts: ds::DPMSTimeouts,
+}
+
+impl ServerConfiguration {
+    async fn fetch<C: DisplayServerController>(controller: &C) -> Result<ServerConfiguration> {
+        let level_controller = controller.clone();
+        let level_handle = tokio::task::spawn_blocking(move || level_controller.get_dpms_level());
+
+        let timeouts_controller = controller.clone();
+        let timeouts_handle =
+            tokio::task::spawn_blocking(move || timeouts_controller.get_dpms_timeouts());
+
+        Ok(ServerConfiguration {
+            level: level_handle.await??,
+            timeouts: timeouts_handle.await??,
+        })
+    }
+
+    async fn apply<C: ds::DisplayServerController>(self, controller: &C) -> Result<()> {
+        let level_controller = controller.clone();
+        let level_handle = if let Some(level) = self.level {
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                level_controller.set_dpms_state(true)?;
+                level_controller.set_dpms_level(level)?;
+                Ok(())
+            })
+        } else {
+            tokio::task::spawn_blocking(move || level_controller.set_dpms_state(false))
+        };
+
+        let timeouts_controller = controller.clone();
+        let timeouts_handle = tokio::task::spawn_blocking(move || {
+            timeouts_controller.set_dpms_timeouts(self.timeouts)
+        });
+
+        level_handle.await??; // Not exactly the most elegant error handling, but eh. If this fails, it's not a catastrophe, more like a bit annoying.
+        Ok(timeouts_handle.await??)
     }
 }

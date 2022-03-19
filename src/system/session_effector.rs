@@ -1,9 +1,46 @@
-use crate::armaf::{EffectorMessage, Server};
+use crate::{
+    armaf::{
+        spawn_server, Effect, Effector, EffectorMessage, EffectorPort, RollbackStrategy, Server,
+    },
+    external::{
+        brightness::BrightnessController, dependency_provider::DependencyProvider,
+        display_server as ds,
+    },
+};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use log;
-use logind_zbus::{self, session::SessionProxy};
+use logind_zbus::{self, manager::InhibitType, session::SessionProxy};
 use std::process;
+
+pub struct SessionEffector;
+
+#[async_trait]
+impl Effector for SessionEffector {
+    fn get_effects(&self) -> Vec<Effect> {
+        vec![
+            Effect::new(
+                "idle_hint".to_owned(),
+                vec![InhibitType::Idle],
+                RollbackStrategy::OnActivity,
+            ),
+            Effect::new(
+                "locked_hint".to_owned(),
+                vec![InhibitType::Idle],
+                RollbackStrategy::Immediate,
+            ),
+        ]
+    }
+
+    async fn spawn<B: BrightnessController, D: ds::DisplayServer>(
+        &self,
+        _: Option<toml::Value>,
+        provider: &mut DependencyProvider<B, D>,
+    ) -> Result<EffectorPort> {
+        let actor = SessionEffectorActor::new(provider.get_dbus_system_connection().await?);
+        spawn_server(actor).await
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum SessionState {
@@ -12,15 +49,15 @@ pub enum SessionState {
     LockedHinted,
 }
 
-pub struct SessionEffector {
+pub struct SessionEffectorActor {
     session_state: SessionState,
     connection: zbus::Connection,
     session_proxy: Option<SessionProxy<'static>>,
 }
 
-impl SessionEffector {
-    pub fn new(connection: zbus::Connection) -> SessionEffector {
-        SessionEffector {
+impl SessionEffectorActor {
+    pub fn new(connection: zbus::Connection) -> SessionEffectorActor {
+        SessionEffectorActor {
             session_state: SessionState::Active,
             connection,
             session_proxy: None,
@@ -33,7 +70,7 @@ impl SessionEffector {
 }
 
 #[async_trait]
-impl Server<EffectorMessage, ()> for SessionEffector {
+impl Server<EffectorMessage, ()> for SessionEffectorActor {
     fn get_name(&self) -> String {
         "SessionEffector".to_owned()
     }

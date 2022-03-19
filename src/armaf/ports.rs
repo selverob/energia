@@ -1,10 +1,8 @@
 //! Basic primitives for constructing a simple actor system on top of Tokio tasks.
 
-use std::fmt::Debug;
-use std::result::Result;
+use std::{fmt::Debug, result::Result};
 use thiserror::Error;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, mpsc::error::SendError, oneshot};
 
 /// A shorthand type defining a [oneshot::Receiver] which is used to receive the
 /// results of an operation invoked by a [Request].
@@ -133,5 +131,24 @@ impl<P, R, E: Debug> ActorPort<P, R, E> {
                 Err(actor_error) => Err(ActorRequestError::ActorError(actor_error)),
             },
         }
+    }
+}
+
+/// A handle which allows signalizing termination / drop to actors
+///
+/// This handle contains a [oneshot::Sender] which is closed once the handle is
+/// dropped. Thus, an actor can await an error on the [oneshot::Receiver]
+/// returned from the [Handle::new()] method and interpret it as a signal to
+/// terminate itself.
+pub struct Handle(oneshot::Sender<()>);
+
+impl Handle {
+    /// Create a new Handle and return it and its associated receiver.
+    ///
+    /// The handle should be returned to the spawning actor while the actor which
+    /// wants to be notified about its drop should keep the returned [oneshot::Receiver]
+    pub fn new() -> (Handle, oneshot::Receiver<()>) {
+        let (sender, receiver) = oneshot::channel();
+        (Handle(sender), receiver)
     }
 }

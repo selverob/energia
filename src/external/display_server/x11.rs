@@ -1,22 +1,25 @@
 use std::sync::Arc;
 
-use super::interface::{DPMSLevel, DPMSTimeouts, DisplayServer, SystemState};
-use super::DisplayServerController;
+use super::{
+    interface::{DPMSLevel, DPMSTimeouts, DisplayServer, SystemState},
+    DisplayServerController,
+};
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use tokio::sync::watch;
-use x11rb::protocol::dpms::{self, ConnectionExt as _};
-use x11rb::protocol::screensaver::{self, ConnectionExt as _, State};
-use x11rb::protocol::xproto::{
-    AtomEnum, Blanking, ConnectionExt as _, CreateWindowAux, EventMask, Exposures, PropMode,
-    Screen, Window, WindowClass,
-};
-use x11rb::protocol::Event;
-use x11rb::rust_connection::RustConnection;
-use x11rb::COPY_DEPTH_FROM_PARENT;
 use x11rb::{
     connection::{Connection, RequestConnection},
-    protocol::xproto::ScreenSaver,
+    protocol::{
+        dpms::{self, ConnectionExt as _},
+        screensaver::{self, ConnectionExt as _, State},
+        xproto::{
+            AtomEnum, Blanking, ConnectionExt as _, CreateWindowAux, EventMask, Exposures,
+            PropMode, Screen, ScreenSaver, Window, WindowClass,
+        },
+        Event,
+    },
+    rust_connection::RustConnection,
+    COPY_DEPTH_FROM_PARENT,
 };
 
 impl Into<SystemState> for State {

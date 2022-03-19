@@ -1,15 +1,17 @@
-use crate::external::display_server::x11::{self, X11DisplayServerController};
 use crate::external::display_server::{
+    x11::{self, X11DisplayServerController},
     DPMSLevel, DPMSTimeouts, DisplayServer, DisplayServerController, SystemState,
 };
-use std::io;
-use std::process::{Child, Command};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread::sleep;
-use std::time::Duration;
-use x11rb::connection::Connection;
-use x11rb::protocol::xtest::ConnectionExt;
-use x11rb::rust_connection::RustConnection;
+use std::{
+    io,
+    process::{Child, Command},
+    sync::atomic::{AtomicUsize, Ordering},
+    thread::sleep,
+    time::Duration,
+};
+use x11rb::{
+    connection::Connection, protocol::xtest::ConnectionExt, rust_connection::RustConnection,
+};
 
 static DISPLAY_NUMBER: AtomicUsize = AtomicUsize::new(1);
 
@@ -145,7 +147,7 @@ fn test_basic_flow() {
 #[test]
 fn test_activity_forcing() {
     with_xvfb(|iface, connection, screen_num| {
-        let root = connection.setup().roots[screen_num].root;
+        let _ = connection.setup().roots[screen_num].root;
         let controller = iface.get_controller();
         controller
             .set_idleness_timeout(2)

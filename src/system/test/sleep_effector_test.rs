@@ -18,7 +18,7 @@
 //     env::set_var("RUST_LOG", "debug");
 //     env_logger::init();
 //     let mut factory = dbus::ConnectionFactory::new();
-//     let port = spawn_server(sleep_effector::SleepEffector::new(
+//     let port = spawn_server(sleep_effector::SleepEffectorActor::new(
 //         factory.get_system().await.unwrap(),
 //     ))
 //     .await

@@ -1,11 +1,11 @@
-use crate::armaf::{spawn_server, EffectorMessage};
-use crate::external::dbus;
-use crate::system::session_effector;
+use crate::{
+    armaf::{spawn_server, EffectorMessage},
+    external::dbus,
+    system::session_effector,
+};
 use anyhow::Result;
 use logind_zbus::{manager, session};
-use std::process;
-use std::thread::sleep;
-use std::time::Duration;
+use std::{process, thread::sleep, time::Duration};
 use tokio;
 
 #[tokio::test]
@@ -14,7 +14,7 @@ async fn test_happy_path() {
     let mut factory = dbus::ConnectionFactory::new();
     let test_connection = factory.get_system().await.unwrap();
     let session_proxy = get_session_proxy(&test_connection).await.unwrap();
-    let port = spawn_server(session_effector::SessionEffector::new(
+    let port = spawn_server(session_effector::SessionEffectorActor::new(
         factory.get_system().await.unwrap(),
     ))
     .await

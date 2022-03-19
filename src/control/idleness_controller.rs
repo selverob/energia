@@ -1,18 +1,28 @@
-use super::effect::Effect;
-use crate::system::inhibition_sensor::GetInhibitions;
 use crate::{
-    armaf::{ActorPort, EffectorMessage, EffectorPort, Server},
+    armaf::{ActorPort, Effect, EffectorMessage, EffectorPort, RollbackStrategy, Server},
     external::display_server::SystemState,
+    system::inhibition_sensor::GetInhibitions,
 };
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use logind_zbus::manager::{InhibitType, Inhibitor, Mode};
 
+pub struct Action {
+    effect: Effect,
+    recipient: EffectorPort,
+}
+
+impl Action {
+    pub fn new(effect: Effect, recipient: EffectorPort) -> Action {
+        Action { effect, recipient }
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub struct Stop;
 
 pub struct IdlenessController {
-    effect_bunches: Vec<Vec<Effect>>,
+    action_bunches: Vec<Vec<Action>>,
     current_bunch: usize,
     rollback_stack: Vec<EffectorPort>,
 
@@ -21,11 +31,11 @@ pub struct IdlenessController {
 
 impl IdlenessController {
     pub fn new(
-        effect_bunches: Vec<Vec<Effect>>,
+        action_bunches: Vec<Vec<Action>>,
         inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
     ) -> IdlenessController {
         IdlenessController {
-            effect_bunches,
+            action_bunches,
             current_bunch: 0,
             inhibition_sensor,
             rollback_stack: Vec::new(),
@@ -38,18 +48,16 @@ impl IdlenessController {
         }
 
         let mut immediate_rollback_ports: Vec<EffectorPort> = Vec::new();
-        for effect in &self.effect_bunches[self.current_bunch] {
-            log::debug!("Applying effect {}", effect.name);
-            if let Err(e) = effect.recipient.request(EffectorMessage::Execute).await {
-                log::error!("Failed to apply effect {}: {:?}", effect.name, e);
+        for action in &self.action_bunches[self.current_bunch] {
+            log::debug!("Applying effect {}", action.effect.name);
+            if let Err(e) = action.recipient.request(EffectorMessage::Execute).await {
+                log::error!("Failed to apply effect {}: {:?}", action.effect.name, e);
                 continue;
             }
-            match effect.rollback_strategy {
-                crate::control::effect::RollbackStrategy::OnActivity => {
-                    self.rollback_stack.push(effect.recipient.clone())
-                }
-                crate::control::effect::RollbackStrategy::Immediate => {
-                    immediate_rollback_ports.push(effect.recipient.clone())
+            match action.effect.rollback_strategy {
+                RollbackStrategy::OnActivity => self.rollback_stack.push(action.recipient.clone()),
+                RollbackStrategy::Immediate => {
+                    immediate_rollback_ports.push(action.recipient.clone())
                 }
             }
         }
@@ -82,9 +90,9 @@ impl IdlenessController {
     async fn is_current_bunch_inhibited(&mut self) -> bool {
         let inhibitors = self.get_inhibitors().await;
         let upcoming_inhibition_types: Vec<InhibitType> = dedup_inhibit_types(
-            &self.effect_bunches[self.current_bunch]
+            &self.action_bunches[self.current_bunch]
                 .iter()
-                .flat_map(|e| e.inhibited_by.clone())
+                .flat_map(|e| e.effect.inhibited_by.clone())
                 .collect(),
         );
 
@@ -124,6 +132,10 @@ impl Server<SystemState, ()> for IdlenessController {
             SystemState::Idle => self.handle_idleness().await?,
         }
         Ok(())
+    }
+
+    async fn tear_down(&mut self) -> Result<()> {
+        self.handle_wakeup().await
     }
 }
 

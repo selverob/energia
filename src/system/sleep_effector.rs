@@ -1,21 +1,49 @@
-use std::time::Duration;
-
+use crate::{
+    armaf::{
+        spawn_server, Effect, Effector, EffectorMessage, EffectorPort, RollbackStrategy, Server,
+    },
+    external::{
+        brightness::BrightnessController, dependency_provider::DependencyProvider,
+        display_server as ds,
+    },
+};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use logind_zbus::manager::{ManagerProxy, PrepareForSleepStream};
+use logind_zbus::manager::{InhibitType, ManagerProxy, PrepareForSleepStream};
+use std::time::Duration;
 use tokio_stream::StreamExt;
 
-use crate::armaf::{EffectorMessage, Server};
+pub struct SleepEffector;
 
-pub struct SleepEffector {
+#[async_trait]
+impl Effector for SleepEffector {
+    fn get_effects(&self) -> Vec<Effect> {
+        vec![Effect::new(
+            "sleep".to_owned(),
+            vec![InhibitType::Sleep],
+            RollbackStrategy::Immediate,
+        )]
+    }
+
+    async fn spawn<B: BrightnessController, D: ds::DisplayServer>(
+        &self,
+        _: Option<toml::Value>,
+        provider: &mut DependencyProvider<B, D>,
+    ) -> Result<EffectorPort> {
+        let actor = SleepEffectorActor::new(provider.get_dbus_system_connection().await?);
+        spawn_server(actor).await
+    }
+}
+
+pub struct SleepEffectorActor {
     connection: zbus::Connection,
     manager_proxy: Option<ManagerProxy<'static>>,
     sleep_signal_stream: Option<PrepareForSleepStream<'static>>,
 }
 
-impl SleepEffector {
-    pub fn new(connection: zbus::Connection) -> SleepEffector {
-        SleepEffector {
+impl SleepEffectorActor {
+    pub fn new(connection: zbus::Connection) -> SleepEffectorActor {
+        SleepEffectorActor {
             connection,
             manager_proxy: None,
             sleep_signal_stream: None,
@@ -24,7 +52,7 @@ impl SleepEffector {
 }
 
 #[async_trait]
-impl Server<EffectorMessage, ()> for SleepEffector {
+impl Server<EffectorMessage, ()> for SleepEffectorActor {
     fn get_name(&self) -> String {
         "SleepEffector".to_owned()
     }

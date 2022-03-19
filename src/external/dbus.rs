@@ -47,8 +47,11 @@ impl ConnectionFactory {
 mod test {
     use super::ConnectionFactory;
     use anyhow::Result;
-    use zbus::fdo::{self, DBusProxy};
-    use zbus::{self, Connection};
+    use zbus::{
+        self,
+        fdo::{self, DBusProxy},
+        Connection,
+    };
 
     #[tokio::test]
     #[ignore]
