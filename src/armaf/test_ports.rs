@@ -1,4 +1,5 @@
 use super::ports;
+use std::sync::{Arc, atomic::AtomicBool};
 use tokio;
 
 #[tokio::test]
@@ -18,7 +19,8 @@ async fn test_request_response() {
 
 #[tokio::test]
 async fn test_actor_port() {
-    let port = spawn_two_increments_one_error();
+    let termination_flag = make_termination_flag();
+    let port = spawn_two_increments_one_error(termination_flag.clone());
     assert_eq!(
         port.request(TestActorMessage::Increment)
             .await
@@ -41,11 +43,16 @@ async fn test_actor_port() {
     } else {
         panic!("An error from Actor is not translated correctly");
     }
+    assert!(!termination_flag.as_ref().load(std::sync::atomic::Ordering::Acquire));
+    port.await_shutdown().await;
+    assert!(termination_flag.as_ref().load(std::sync::atomic::Ordering::Acquire));
 }
 
 #[tokio::test]
 async fn test_request_errors() {
-    let port = spawn_two_increments_one_error();
+    let termination_flag = make_termination_flag();
+    let port = spawn_two_increments_one_error(termination_flag.clone());
+    assert!(!termination_flag.as_ref().load(std::sync::atomic::Ordering::Acquire));
     let recv_error = port
         .request(TestActorMessage::Terminate)
         .await
@@ -62,6 +69,10 @@ async fn test_request_errors() {
     } else {
         panic!("A SendError is not translated correctly");
     }
+
+    // This will hang forever in case the shutdown notifier's Sender side is not
+    // closed correctly on Drop
+    port.await_shutdown().await;
 }
 
 enum TestActorMessage {
@@ -70,7 +81,7 @@ enum TestActorMessage {
     Terminate,
 }
 
-fn spawn_two_increments_one_error() -> ports::ActorPort<TestActorMessage, usize, std::io::Error> {
+fn spawn_two_increments_one_error(termination_flag: Arc<AtomicBool>) -> ports::ActorPort<TestActorMessage, usize, std::io::Error> {
     let (port, mut rx) = ports::ActorPort::make();
     tokio::spawn(async move {
         let mut count = 0;
@@ -95,8 +106,13 @@ fn spawn_two_increments_one_error() -> ports::ActorPort<TestActorMessage, usize,
                 TestActorMessage::Terminate => return,
             }
         }
+        termination_flag.as_ref().store(true, std::sync::atomic::Ordering::Release);
     });
     port
+}
+
+fn make_termination_flag() -> Arc<AtomicBool> {
+    Arc::new(AtomicBool::new(false))
 }
 
 #[test]

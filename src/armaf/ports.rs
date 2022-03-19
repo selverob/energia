@@ -2,7 +2,7 @@
 
 use std::{fmt::Debug, result::Result};
 use thiserror::Error;
-use tokio::sync::{mpsc, mpsc::error::SendError, oneshot};
+use tokio::sync::{mpsc, mpsc::error::SendError, oneshot, watch};
 
 /// A shorthand type defining a [oneshot::Receiver] which is used to receive the
 /// results of an operation invoked by a [Request].
@@ -54,9 +54,9 @@ pub enum ActorRequestError<E: Debug> {
 
 /// A communication channel with an actor.
 ///
-/// This is the main primitive of the actor system. There is no structure which
-/// can be used to reference an actor, which is only a [tokio::task].
-/// An ActorPort allows you to send [Request]s to the actor. The
+/// This is the main primitive of the actor system. There is no general
+/// structure which can be used to reference an actor, which is only a
+/// [tokio::task]. An ActorPort allows you to send [Request]s to the actor. The
 /// [oneshot] channel contained in the [Request] is then used to communicate the
 /// results back to its sender.
 ///
@@ -71,11 +71,12 @@ pub enum ActorRequestError<E: Debug> {
 ///
 /// 2. An actor should not expect a specific message instructing it to stop
 ///    itself. Any cleanup actions should be performed once a None is returned
-///    on from the [mpsc::Receiver::recv], indicating that there all
-///    [mpsc::Sender]s have been dropped.
+///    on from the [mpsc::Receiver::recv], indicating that all [mpsc::Sender]s
+///    have been dropped.
 #[derive(Debug)]
 pub struct ActorPort<P, R, E: Debug> {
     message_sender: mpsc::Sender<Request<P, R, E>>,
+    shutdown_receiver: watch::Receiver<()>,
 }
 
 // #[derive(Debug)] creates an implementation of Clone
@@ -87,25 +88,36 @@ impl<P, R, E: Debug> Clone for ActorPort<P, R, E> {
     fn clone(&self) -> Self {
         Self {
             message_sender: self.message_sender.clone(),
+            shutdown_receiver: self.shutdown_receiver.clone(),
         }
     }
 }
 
 impl<P, R, E: Debug> ActorPort<P, R, E> {
     /// Creates a new ActorPort which will send requests through the given Sender
-    pub fn new(message_sender: mpsc::Sender<Request<P, R, E>>) -> ActorPort<P, R, E> {
-        ActorPort { message_sender }
+    pub fn new(
+        message_sender: mpsc::Sender<Request<P, R, E>>,
+        shutdown_receiver: watch::Receiver<()>,
+    ) -> ActorPort<P, R, E> {
+        ActorPort {
+            message_sender,
+            shutdown_receiver,
+        }
     }
 
     /// A convenience function for creating an ActorPort initialized with a
     /// Sender side of an [mpsc] channe.
     ///
-    /// The Receiver side is returned too. This function can be used to simplify
+    /// An [ActorReceiver] is returned too. This function can be used to simplify
     /// actor initialization. The Receiver is moved into the [tokio::task] for
     /// the actor while the ActorPort is returned to the caller.
-    pub fn make() -> (ActorPort<P, R, E>, mpsc::Receiver<Request<P, R, E>>) {
-        let (tx, rx) = mpsc::channel::<Request<P, R, E>>(8);
-        (ActorPort::new(tx), rx)
+    pub fn make() -> (ActorPort<P, R, E>, ActorReceiver<P, R, E>) {
+        let (req_tx, req_rx) = mpsc::channel::<Request<P, R, E>>(8);
+        let (shutdown_tx, shutdown_rx) = watch::channel(());
+        (
+            ActorPort::new(req_tx, shutdown_rx),
+            ActorReceiver::new(req_rx, shutdown_tx),
+        )
     }
 
     /// Sends a [Request] to the actor. Does not do anything else. Prefer using
@@ -131,6 +143,61 @@ impl<P, R, E: Debug> ActorPort<P, R, E> {
                 Err(actor_error) => Err(ActorRequestError::ActorError(actor_error)),
             },
         }
+    }
+
+    /// Await actor' termination
+    /// 
+    /// Drops this port's message sender and waits until all the other clones of
+    /// this ActorPort are dropped or have this method called and the actor
+    /// terminates. An actor is considered to terminate once it drops its
+    /// [ActorReceiver].
+    pub async fn await_shutdown(self) {
+        // We first need to drop our message sender because the actors are
+        // supposed treat closing of their message receivers as a shutdown
+        // signal.
+        drop(self.message_sender);
+        let mut shutdown_receiver = self.shutdown_receiver;
+
+        // Now we just wait until all other message senders are closed, actor
+        // registers that and finishes its cleanup, dropping the ActorPort.
+        let result = shutdown_receiver.changed().await;
+        assert!(result.is_err());
+    }
+}
+
+/// The receiving side of an [ActorPort].
+/// 
+/// Contains a [mpsc::Receiver] which can either be used directly or which can
+/// be called through the convenience `recv` method on this struct.
+/// 
+/// This struct also handles termination notification for [ActorPorts](ActorPort), thus the
+/// dropping this struct must be the last thing an actor does. Performing any
+/// operations after that will break [`ActorPort::await_shutdown`].
+#[derive(Debug)]
+pub struct ActorReceiver<P, R, E: Debug> {
+    pub request_receiver: mpsc::Receiver<Request<P, R, E>>,
+    _shutdown_notifier: watch::Sender<()>,
+}
+
+impl<P, R, E: Debug> ActorReceiver<P, R, E> {
+
+    /// Create a new [ActorReceiver]
+    pub fn new(
+        request_receiver: mpsc::Receiver<Request<P, R, E>>,
+        shutdown_notifier: watch::Sender<()>,
+    ) -> Self {
+        ActorReceiver {
+            request_receiver,
+            _shutdown_notifier: shutdown_notifier,
+        }
+    }
+
+    /// Call the recv method on this struct's request_receiver.
+    /// 
+    /// The semantics of this method are exactly the same as the semantics of
+    /// [mpsc::Receiver]'s recv method.
+    pub async fn recv(&mut self) -> Option<Request<P, R, E>> {
+        self.request_receiver.recv().await
     }
 }
 
