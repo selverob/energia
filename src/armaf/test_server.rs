@@ -59,7 +59,7 @@ async fn test_happy_path() {
     let port = spawn_server(server).await.expect("No port returned");
     assert_eq!(port.request(()).await.unwrap(), 1);
     assert_eq!(port.request(()).await.unwrap(), 2);
-    drop(port);
+    port.await_shutdown().await;
     notifier
         .recv()
         .await
@@ -73,7 +73,7 @@ async fn test_response_failure() {
     assert_eq!(port.request(()).await.unwrap(), 1);
     assert_eq!(port.request(()).await.unwrap(), 2);
     assert!(port.request(()).await.is_err());
-    drop(port);
+    drop(port); // tear_down should be called 
     notifier
         .recv()
         .await

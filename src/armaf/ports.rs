@@ -145,7 +145,7 @@ impl<P, R, E: Debug> ActorPort<P, R, E> {
         }
     }
 
-    /// Await actor' termination
+    /// Await actor termination
     /// 
     /// Drops this port's message sender and waits until all the other clones of
     /// this ActorPort are dropped or have this method called and the actor
