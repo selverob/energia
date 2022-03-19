@@ -17,7 +17,9 @@ use crate::system::upower_sensor::UPowerSensor;
 
 #[tokio::main]
 async fn main() {
-    env::set_var("RUST_LOG", "trace");
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "debug");
+    }
     env_logger::init();
     let config_bytes = fs::read("config.toml")
         .await
