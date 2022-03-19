@@ -28,9 +28,11 @@ impl EffectsCounter {
                 let delta = match req.payload {
                     crate::armaf::EffectorMessage::Execute => 1,
                     crate::armaf::EffectorMessage::Rollback => -1,
+                    crate::armaf::EffectorMessage::CurrentlyAppliedEffects => 0,
                 };
                 *running_effects.lock().unwrap().get_mut() += delta;
-                req.respond(Ok(())).unwrap();
+                req.respond(Ok(running_effects.lock().unwrap().get() as usize))
+                    .unwrap();
             }
         });
 

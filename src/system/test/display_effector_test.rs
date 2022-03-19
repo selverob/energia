@@ -68,20 +68,25 @@ async fn test_basic_flow() {
     ))
     .await
     .expect("Actor initialization failed");
-    port.request(EffectorMessage::Execute)
+    let res = port
+        .request(EffectorMessage::Execute)
         .await
         .expect("Failed to dim display");
     assert_eq!(brightness.get_brightness().await.unwrap(), 40);
+    assert_eq!(res, 1);
 
-    port.request(EffectorMessage::Execute)
+    let res = port
+        .request(EffectorMessage::Execute)
         .await
         .expect("Failed to turn display off");
     assert_eq!(
         ds_controller.get_dpms_level().unwrap(),
         Some(ds::DPMSLevel::Off)
     );
+    assert_eq!(res, 2);
 
-    port.request(EffectorMessage::Rollback)
+    let res = port
+        .request(EffectorMessage::Rollback)
         .await
         .expect("Failed to turn display on");
     assert_eq!(
@@ -89,11 +94,14 @@ async fn test_basic_flow() {
         Some(ds::DPMSLevel::On)
     );
     assert_eq!(brightness.get_brightness().await.unwrap(), 40);
+    assert_eq!(res, 1);
 
-    port.request(EffectorMessage::Rollback)
+    let res = port
+        .request(EffectorMessage::Rollback)
         .await
         .expect("Failed to undim display");
     assert_eq!(brightness.get_brightness().await.unwrap(), 80);
+    assert_eq!(res, 0);
 }
 
 #[tokio::test]
@@ -131,19 +139,29 @@ async fn test_failing_display_server() {
 
     display.set_failure_mode(true);
 
-    port.request(EffectorMessage::Execute)
+    let res = port
+        .request(EffectorMessage::Execute)
         .await
         .expect("Failed to dim display");
     assert_eq!(brightness.get_brightness().await.unwrap(), 40);
+    assert_eq!(res, 1);
 
     port.request(EffectorMessage::Execute)
         .await
         .expect_err("No error reported on failing display server controller");
 
-    port.request(EffectorMessage::Rollback)
+    let res = port
+        .request(EffectorMessage::CurrentlyAppliedEffects)
+        .await
+        .expect("Failed to get applied effect count");
+    assert_eq!(res, 1);
+
+    let res = port
+        .request(EffectorMessage::Rollback)
         .await
         .expect("Failed to undim display");
     assert_eq!(brightness.get_brightness().await.unwrap(), 80);
+    assert_eq!(res, 0);
 }
 
 #[tokio::test]

@@ -56,6 +56,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
             if let Err(e) = self.main_loop().await {
                 log::error!("Error in environment controller: {}", e);
             }
+            self.tear_down().await;
         });
         handle
     }
@@ -96,8 +97,8 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
             let sequencer_handle = sequencer.spawn().await?;
             tokio::select! {
                 _ = self.handle_child.as_mut().unwrap().should_terminate() => {
-                    sequencer_handle.await_shutdown().await;
                     log::info!("Handle dropped, terminating");
+                    sequencer_handle.await_shutdown().await;
                     return Ok(());
                 }
                 _ = self.power_source_receiver.changed() => {
@@ -220,6 +221,13 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
         self.spawned_effectors
             .insert(effector_name.to_string(), port);
         Ok(())
+    }
+
+    async fn tear_down(self) {
+        for (name, port) in self.spawned_effectors.into_iter() {
+            log::debug!("Awaiting shutdown of {}", name);
+            port.await_shutdown().await;
+        }
     }
 }
 

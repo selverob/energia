@@ -67,10 +67,18 @@ impl SessionEffectorActor {
     fn get_session_proxy(&self) -> &SessionProxy<'static> {
         self.session_proxy.as_ref().unwrap()
     }
+
+    fn currently_applied_effects(&self) -> usize {
+        match self.session_state {
+            SessionState::Active => 0,
+            SessionState::IdleHinted => 1,
+            SessionState::LockedHinted => 2,
+        }
+    }
 }
 
 #[async_trait]
-impl Server<EffectorMessage, ()> for SessionEffectorActor {
+impl Server<EffectorMessage, usize> for SessionEffectorActor {
     fn get_name(&self) -> String {
         "SessionEffector".to_owned()
     }
@@ -88,7 +96,7 @@ impl Server<EffectorMessage, ()> for SessionEffectorActor {
         Ok(())
     }
 
-    async fn handle_message(&mut self, payload: EffectorMessage) -> Result<()> {
+    async fn handle_message(&mut self, payload: EffectorMessage) -> Result<usize> {
         match (self.session_state, payload) {
             (SessionState::Active, EffectorMessage::Execute) => {
                 log::debug!("Setting idle hint to true");
@@ -116,7 +124,10 @@ impl Server<EffectorMessage, ()> for SessionEffectorActor {
                 self.get_session_proxy().set_locked_hint(false).await?;
                 self.session_state = SessionState::IdleHinted;
             }
+            (_, EffectorMessage::CurrentlyAppliedEffects) => {
+                // We return the number of applied effects at the end anyway
+            }
         }
-        Ok(())
+        Ok(self.currently_applied_effects())
     }
 }

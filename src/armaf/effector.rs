@@ -13,9 +13,10 @@ use logind_zbus::manager::InhibitType;
 pub enum EffectorMessage {
     Execute,
     Rollback,
+    CurrentlyAppliedEffects,
 }
 
-pub type EffectorPort = ActorPort<EffectorMessage, (), anyhow::Error>;
+pub type EffectorPort = ActorPort<EffectorMessage, usize, anyhow::Error>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum RollbackStrategy {
