@@ -1,15 +1,12 @@
 use crate::{
-    armaf::{self, ActorRequestError},
+    armaf::{self, ActorRequestError, HandleChild},
     external::display_server::{DisplayServerController, SystemState},
 };
 use anyhow::{Context, Result};
 use log;
 use std::time::Duration;
 use thiserror::Error;
-use tokio::{
-    select,
-    sync::{oneshot, watch},
-};
+use tokio::{select, sync::watch};
 
 #[derive(Debug, Copy, Clone, Error)]
 #[error("SequencerHandle dropped, actor must terminate")]
@@ -22,7 +19,7 @@ pub struct Sequencer<C: DisplayServerController> {
     state_channel: watch::Receiver<SystemState>,
     original_timeout: Option<i16>,
     port: armaf::ActorPort<SystemState, (), anyhow::Error>,
-    termination_receiver: Option<oneshot::Receiver<()>>,
+    handle_child: Option<HandleChild>,
 }
 
 impl<C: DisplayServerController> Sequencer<C> {
@@ -39,13 +36,13 @@ impl<C: DisplayServerController> Sequencer<C> {
             state_channel,
             original_timeout: None,
             port: receiver_port,
-            termination_receiver: None,
+            handle_child: None,
         }
     }
 
     pub async fn spawn(mut self) -> Result<armaf::Handle> {
-        let (handle, termination_receiver) = armaf::Handle::new();
-        self.termination_receiver = Some(termination_receiver);
+        let (handle, handle_child) = armaf::Handle::new();
+        self.handle_child = Some(handle_child);
         self.initialize().await?;
 
         tokio::spawn(async move {
@@ -128,7 +125,7 @@ impl<C: DisplayServerController> Sequencer<C> {
                 res = self.state_channel.changed() => {
                     res.context("Idleness channel wait failed. Channel closed?")?;
                 }
-                Err(_) = self.termination_receiver.as_mut().unwrap() => {
+                _ = self.handle_child.as_mut().unwrap().should_terminate() => {
                     return Err(anyhow::Error::new(HandleDropped))
                 }
             }
@@ -164,18 +161,20 @@ impl<C: DisplayServerController> Sequencer<C> {
                     log::error!("Received an unexpected idle from display server, is something else setting the timeouts?");
                 }
             },
-            Err(_) = self.termination_receiver.as_mut().unwrap() => {
+            _ = self.handle_child.as_mut().unwrap().should_terminate() => {
                 return Err(anyhow::Error::new(HandleDropped))
             }
         };
         Ok(())
     }
 
-    async fn tear_down(&mut self) -> Result<()> {
+    async fn tear_down(self) -> Result<()> {
         log::debug!("Tearing down");
-        Ok(self
+        let reset_result = self
             .set_ds_timeout(self.original_timeout.unwrap_or(-1i16))
-            .await?)
+            .await;
+        self.port.await_shutdown().await;
+        reset_result
     }
 
     async fn force_activity(&mut self) {

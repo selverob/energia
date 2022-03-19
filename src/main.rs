@@ -17,7 +17,9 @@ use crate::system::upower_sensor::UPowerSensor;
 
 #[tokio::main]
 async fn main() {
-    env::set_var("RUST_LOG", "trace");
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "debug");
+    }
     env_logger::init();
     let config_bytes = fs::read("config.toml")
         .await
@@ -40,6 +42,6 @@ async fn main() {
             .expect("Couldn't construct environment controller");
     let handle = environment_controller.spawn().await;
     tokio::signal::ctrl_c().await.expect("Signal wait failed");
-    drop(handle);
+    handle.await_shutdown().await;
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 }

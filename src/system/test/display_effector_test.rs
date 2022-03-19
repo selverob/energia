@@ -44,14 +44,14 @@ async fn test_original_config_saving() {
     brightness.set_brightness(45).await.unwrap();
 
     // Test if the display effector resets the state to original when it's terminated
-    drop(port);
+    port.await_shutdown().await;
     assert_eq!(
         ds_controller.get_dpms_level().unwrap(),
-        Some(ds::DPMSLevel::On)
+        Some(ds::DPMSLevel::Standby)
     );
     assert_eq!(
         ds_controller.get_dpms_timeouts().unwrap(),
-        ds::DPMSTimeouts::new(0, 0, 0)
+        ds::DPMSTimeouts::new(42, 43, 44)
     );
     assert_eq!(brightness.get_brightness().await.unwrap(), 45);
 }
@@ -111,7 +111,7 @@ async fn test_undim_on_termination() {
         .await
         .expect("Failed to dim display");
     assert_eq!(brightness.get_brightness().await.unwrap(), 40);
-    drop(port);
+    port.await_shutdown().await;
     tokio::time::sleep(Duration::from_millis(250)).await;
     assert_eq!(brightness.get_brightness().await.unwrap(), 80);
 }

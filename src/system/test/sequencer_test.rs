@@ -6,7 +6,7 @@ use crate::{
     system::sequencer::Sequencer,
 };
 use anyhow::{anyhow, Result};
-use tokio::{self, sync::mpsc, time::sleep};
+use tokio::{self, time::sleep};
 
 #[tokio::test]
 async fn test_complete_sequence() {
@@ -25,28 +25,28 @@ async fn test_complete_sequence() {
         .spawn()
         .await
         .expect("Sequencer failed to initialize");
-    assert!(receiver.try_recv().is_err());
+    assert!(receiver.request_receiver.try_recv().is_err());
 
     assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 5);
 
     iface.notify_state_transition(SystemState::Idle).unwrap();
     assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
-    assert!(receiver.try_recv().is_err());
+    assert!(receiver.request_receiver.try_recv().is_err());
     sleep(Duration::from_secs(6)).await;
 
     assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
-    assert!(receiver.try_recv().is_err());
+    assert!(receiver.request_receiver.try_recv().is_err());
     sleep(Duration::from_secs(3)).await;
 
     assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
     sleep(Duration::from_secs(1)).await;
-    assert!(receiver.try_recv().is_err());
+    assert!(receiver.request_receiver.try_recv().is_err());
 
-    drop(handle);
-    sleep(Duration::from_millis(100)).await;
+    drop(receiver);
+    handle.await_shutdown().await;
     assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 600);
 }
 
@@ -95,8 +95,8 @@ async fn test_interruptions() {
         .unwrap();
     assert_request_came(&mut receiver, SystemState::Awakened, Ok(())).await;
 
-    drop(handle);
-    sleep(Duration::from_millis(100)).await;
+    drop(receiver);
+    handle.await_shutdown().await;
     assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 600);
 }
 
@@ -126,7 +126,7 @@ async fn test_actor_errors() {
     )
     .await;
 
-    assert!(receiver.try_recv().is_err());
+    assert!(receiver.request_receiver.try_recv().is_err());
     sleep(Duration::from_millis(200)).await;
     iface.notify_state_transition(SystemState::Idle).unwrap();
     assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
@@ -152,15 +152,15 @@ async fn test_actor_errors() {
         .notify_state_transition(SystemState::Awakened)
         .unwrap();
     assert_request_came(&mut receiver, SystemState::Awakened, Ok(())).await;
-    assert!(receiver.try_recv().is_err());
+    assert!(receiver.request_receiver.try_recv().is_err());
 
-    drop(handle);
-    sleep(Duration::from_millis(100)).await;
+    drop(receiver);
+    handle.await_shutdown().await;
     assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 600);
 }
 
 async fn assert_request_came(
-    receiver: &mut mpsc::Receiver<armaf::Request<SystemState, (), anyhow::Error>>,
+    receiver: &mut armaf::ActorReceiver<SystemState, (), anyhow::Error>,
     expected_state: SystemState,
     response: Result<()>,
 ) {
