@@ -1,30 +1,40 @@
 use crate::{
-    armaf::{self, ActorRequestError, HandleChild},
+    armaf,
     external::display_server::{DisplayServerController, SystemState},
 };
 use anyhow::{Context, Result};
 use log;
 use std::time::Duration;
 use thiserror::Error;
-use tokio::{select, sync::watch};
+use tokio::{select, sync::watch, time::Instant};
+
+#[derive(Debug, Copy, Clone)]
+pub struct GetRunningTime;
 
 #[derive(Debug, Copy, Clone, Error)]
-#[error("SequencerHandle dropped, actor must terminate")]
-struct HandleDropped;
+#[error("Sequencer's port dropped, actor must terminate")]
+struct PortDropped;
+
+#[derive(Debug, Copy, Clone)]
+enum PositionChange {
+    Increment,
+    Reset,
+}
 
 pub struct Sequencer<C: DisplayServerController> {
     timeout_sequence: Vec<u64>,
     current_position: usize,
     controller: C,
     state_channel: watch::Receiver<SystemState>,
+    position_changed_at: Instant,
     original_timeout: Option<i16>,
-    port: armaf::ActorPort<SystemState, (), anyhow::Error>,
-    handle_child: Option<HandleChild>,
+    child_port: armaf::ActorPort<SystemState, (), anyhow::Error>,
+    command_receiver: Option<armaf::ActorReceiver<GetRunningTime, Duration, ()>>,
 }
 
 impl<C: DisplayServerController> Sequencer<C> {
     pub fn new(
-        receiver_port: armaf::ActorPort<SystemState, (), anyhow::Error>,
+        child_port: armaf::ActorPort<SystemState, (), anyhow::Error>,
         ds_controller: C,
         state_channel: watch::Receiver<SystemState>,
         timeout_sequence: &Vec<u64>,
@@ -34,15 +44,16 @@ impl<C: DisplayServerController> Sequencer<C> {
             current_position: 0,
             controller: ds_controller,
             state_channel,
+            position_changed_at: Instant::now(),
             original_timeout: None,
-            port: receiver_port,
-            handle_child: None,
+            child_port: child_port,
+            command_receiver: None,
         }
     }
 
-    pub async fn spawn(mut self) -> Result<armaf::Handle> {
-        let (handle, handle_child) = armaf::Handle::new();
-        self.handle_child = Some(handle_child);
+    pub async fn spawn(mut self) -> Result<armaf::ActorPort<GetRunningTime, Duration, ()>> {
+        let (command_port, command_receiver) = armaf::ActorPort::make();
+        self.command_receiver = Some(command_receiver);
         self.initialize().await?;
 
         tokio::spawn(async move {
@@ -55,7 +66,7 @@ impl<C: DisplayServerController> Sequencer<C> {
             }
         });
 
-        Ok(handle)
+        Ok(command_port)
     }
 
     async fn initialize(&mut self) -> Result<()> {
@@ -83,89 +94,83 @@ impl<C: DisplayServerController> Sequencer<C> {
     }
 
     async fn main_loop(&mut self) {
-        loop {
-            log::debug!("Waiting on timeout no. {}", self.current_position);
-            if self.current_position == 0 {
-                if let Err(e) = self.wait_for_ds_signal(SystemState::Idle, false).await {
-                    if Self::is_terminating_error(e) {
-                        return;
-                    } else {
-                        self.force_activity().await;
-                        continue;
-                    }
-                }
-                self.current_position += 1;
-            } else if self.current_position < self.timeout_sequence.len() {
-                if let Err(e) = self.wait_for_internal_sleep().await {
-                    if Self::is_terminating_error(e) {
-                        return;
-                    }
-                }
-            } else {
-                if let Err(e) = self.wait_for_ds_signal(SystemState::Awakened, false).await {
-                    if Self::is_terminating_error(e) {
-                        return;
-                    } else {
-                        continue;
-                    }
-                }
-                self.current_position = 0;
-            }
-        }
-    }
-
-    async fn wait_for_ds_signal(
-        &mut self,
-        expected_state: SystemState,
-        no_propagate: bool,
-    ) -> Result<()> {
-        log::debug!("Waiting for display server signal");
-        loop {
-            select! {
-                res = self.state_channel.changed() => {
-                    res.context("Idleness channel wait failed. Channel closed?")?;
-                }
-                _ = self.handle_child.as_mut().unwrap().should_terminate() => {
-                    return Err(anyhow::Error::new(HandleDropped))
-                }
-            }
-            let received_state = *self.state_channel.borrow_and_update();
-            if received_state != expected_state {
-                log::error!("Received an unexpected state {:?} from display server, is something else setting the timeouts?", received_state);
-            } else {
-                break;
-            }
-        }
-        if !no_propagate {
-            self.port.request(expected_state).await?;
-        }
-        Ok(())
-    }
-
-    async fn wait_for_internal_sleep(&mut self) -> Result<()> {
-        log::debug!("Waiting for internal sleep or display server activity");
-        let sleep = tokio::time::sleep(Duration::from_secs(
-            self.timeout_sequence[self.current_position],
-        ));
+        // We want reuse the sleep future, but it needs to finish at least one sleep
+        let sleep = tokio::time::sleep(Duration::ZERO);
         tokio::pin!(sleep);
-        tokio::select! {
-            _ = &mut sleep => {
-                self.port.request(SystemState::Idle).await?;
-                self.current_position += 1;
-            }
-            _ = self.state_channel.changed() => {
-                if *self.state_channel.borrow_and_update() == SystemState::Awakened {
-                    self.port.request(SystemState::Awakened).await?;
-                    self.current_position = 0;
-                } else {
-                    log::error!("Received an unexpected idle from display server, is something else setting the timeouts?");
+        (&mut sleep).await;
+        loop {
+            let reset_sleep = match self.loop_iteration(&mut sleep).await {
+                Err(e) => {
+                    if Self::is_terminating_error(e) {
+                        return;
+                    } else {
+                        if self.current_position == 0 {
+                            self.force_activity().await;
+                        }
+                        true
+                    }
                 }
-            },
-            _ = self.handle_child.as_mut().unwrap().should_terminate() => {
-                return Err(anyhow::Error::new(HandleDropped))
+                Ok(reset) => reset,
+            };
+            if reset_sleep && self.position_handleable_by_sleep() {
+                log::debug!("Resetting the sleep future");
+                sleep.as_mut().reset(
+                    Instant::now()
+                        .checked_add(Duration::from_secs(
+                            self.timeout_sequence[self.current_position],
+                        ))
+                        .unwrap(),
+                )
             }
-        };
-        Ok(())
+        }
+    }
+
+    async fn loop_iteration(
+        &mut self,
+        sleep: &mut std::pin::Pin<&mut tokio::time::Sleep>,
+    ) -> Result<bool> {
+        select! {
+            // Sleep futures are not fused, they will reinitialize every time
+            // you await them, so we need to handle the condition here
+            _ = sleep.as_mut(), if self.position_handleable_by_sleep() => {
+                log::debug!("Sleep future fired");
+                self.change_position_and_notify(PositionChange::Increment).await?;
+                Ok(true)
+            }
+            change_result = self.state_channel.changed() => {
+                log::debug!("Display server channel fired");
+                change_result?;
+                let new_state = *self.state_channel.borrow_and_update();
+                match (self.current_position, new_state) {
+                    (0, SystemState::Awakened) => {
+                        log::error!("Received an unexpected awake from display server, is something else setting the timeouts?");
+                    }
+                    (0, SystemState::Idle) => {
+                        self.change_position_and_notify(PositionChange::Increment).await?;
+                    }
+                    (_, SystemState::Awakened) => {
+                        self.change_position_and_notify(PositionChange::Reset).await?;
+                    }
+                    (_, SystemState::Idle) => {
+                        log::error!("Received an unexpected idle from display server, is something else setting the timeouts?");
+                    }
+                }
+                Ok(true)
+            },
+            res = self.command_receiver.as_mut().unwrap().recv() => {
+                log::debug!("Command receiver fired");
+                match res {
+                    None => return Err(anyhow::Error::new(PortDropped)),
+                    Some(req) => {
+                        if req.respond(Ok(self.get_running_time())).is_err() {
+                            log::error!("Couldn't respond to actor request, actor is probably dead. Terminating.");
+                            return Err(anyhow::Error::new(PortDropped));
+                        }
+                    }
+                };
+                Ok(false)
+            }
+        }
     }
 
     async fn tear_down(self) -> Result<()> {
@@ -173,33 +178,95 @@ impl<C: DisplayServerController> Sequencer<C> {
         let reset_result = self
             .set_ds_timeout(self.original_timeout.unwrap_or(-1i16))
             .await;
-        self.port.await_shutdown().await;
+        self.child_port.await_shutdown().await;
         reset_result
+    }
+
+    fn position_handleable_by_sleep(&self) -> bool {
+        self.current_position != 0 && self.current_position < self.timeout_sequence.len()
+    }
+
+    async fn change_position_and_notify(&mut self, change: PositionChange) -> Result<()> {
+        // This method may seem needlessly complicated - why can't we just send
+        // the result to actor and if it's successful, change the position and
+        // time?
+        //
+        // In single-threaded runtimes, like the one used in tests, the task
+        // would not necessarily run further after calling ActorPort#request,
+        // meaning the position and time wouldn't get updated and the tests
+        // would not be able to test GetRunningTime functionality. Also, since
+        // the tests use tokio's time shifting functionality, they cannot use
+        // a multi-threaded runtime.
+        let original_position = self.current_position;
+        let message_for_actor = match change {
+            PositionChange::Increment => {
+                self.current_position += 1;
+                SystemState::Idle
+            }
+            PositionChange::Reset => {
+                self.current_position = 0;
+                SystemState::Awakened
+            }
+        };
+        assert!(self.current_position <= self.timeout_sequence.len());
+        self.position_changed_at = Instant::now();
+
+        if let Err(e) = self.child_port.request(message_for_actor).await {
+            self.current_position = original_position;
+            self.position_changed_at = Instant::now();
+            Err(anyhow::Error::new(e))
+        } else {
+            log::debug!(
+                "Changing position {} to {}",
+                original_position,
+                self.current_position
+            );
+            Ok(())
+        }
+    }
+
+    fn get_running_time(&self) -> Duration {
+        if self.current_position == 0 {
+            return Duration::ZERO;
+        }
+        let step_times: u64 = self.timeout_sequence[0..self.current_position].iter().sum();
+        log::debug!(
+            "Step time sum: {}, additionally elapsed: {:?}",
+            step_times,
+            self.position_changed_at.elapsed()
+        );
+        Duration::from_secs(step_times).saturating_add(self.position_changed_at.elapsed())
     }
 
     async fn force_activity(&mut self) {
         log::debug!("Recovering from actor error by forcing display server to be active");
         if let Err(e) = self.controller.force_activity() {
             log::error!(
-                "Couldn't force activity on display server, effects will be stopped until next idleness. {}",
+                "Couldn't force activity on display server, effects will be stopped until next awake-idle cycle: {}",
             e);
         }
         log::debug!("Waiting for display server to become active again...");
-        if let Err(e) = self.wait_for_ds_signal(SystemState::Awakened, true).await {
-            log::error!("Failure while waiting for filtered activity signal: {}", e);
-        } else {
-            log::debug!("Display server active");
+        loop {
+            if let Err(e) = self.state_channel.changed().await {
+                log::error!("Couldn't await idleness channel change, effects will be stopped until next awake-idle cycle: {}", e);
+                return;
+            }
+            if *self.state_channel.borrow_and_update() == SystemState::Awakened {
+                return;
+            } else {
+                log::warn!("Unexpected Idle state while waiting for display server to reactivate after downstream actor error.");
+            }
         }
     }
 
     fn is_terminating_error(e: anyhow::Error) -> bool {
-        if e.downcast_ref::<HandleDropped>().is_some() {
-            log::debug!("Handle dropped - terminating actor.");
+        if e.downcast_ref::<PortDropped>().is_some() {
+            log::debug!("Port dropped - terminating actor.");
             return true;
         }
-        match e.downcast_ref::<ActorRequestError<anyhow::Error>>() {
+        match e.downcast_ref::<armaf::ActorRequestError<anyhow::Error>>() {
             Some(are) => match are {
-                ActorRequestError::ActorError(actor_error) => {
+                armaf::ActorRequestError::ActorError(actor_error) => {
                     log::error!("Internal error in downstream actor: {}", actor_error);
                     false
                 }
