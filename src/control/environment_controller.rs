@@ -1,6 +1,7 @@
 use super::idleness_controller::{Action, IdlenessController};
 use crate::{
     armaf::{spawn_server, Effect, Effector, EffectorPort, Handle, HandleChild},
+    control::idleness_controller::ReconciliationBunches,
     external::{
         brightness::BrightnessController, dependency_provider::DependencyProvider,
         display_server::DisplayServer,
@@ -87,7 +88,11 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
             let (durations, effects) = bunches_and_timeouts.into_iter().unzip();
             let actions = self.effects_to_actions(&effects).await?;
 
-            let idleness_controller = IdlenessController::new(actions, inhibition_sensor.clone());
+            let idleness_controller = IdlenessController::new(
+                actions,
+                ReconciliationBunches::new(None, None),
+                inhibition_sensor.clone(),
+            );
             let sequencer = Sequencer::new(
                 spawn_server(idleness_controller).await?,
                 self.dependency_provider.get_display_controller(),

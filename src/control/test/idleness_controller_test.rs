@@ -7,7 +7,7 @@ use logind_zbus::manager::{InhibitType, InhibitTypes, Inhibitor, Mode};
 
 use crate::{
     armaf::{spawn_server, ActorPort, Effect, EffectorPort, RollbackStrategy},
-    control::idleness_controller::{Action, IdlenessController},
+    control::idleness_controller::{Action, IdlenessController, ReconciliationBunches},
     external::display_server::SystemState,
     system::inhibition_sensor::GetInhibitions,
 };
@@ -130,7 +130,11 @@ async fn test_without_inhibitors() {
     ];
 
     let inhibition_sensor = MockInhibitionSensor::new();
-    let idleness_controller = IdlenessController::new(action_bunches, inhibition_sensor.spawn());
+    let idleness_controller = IdlenessController::new(
+        action_bunches,
+        ReconciliationBunches::new(None, None),
+        inhibition_sensor.spawn(),
+    );
     let controller_port = spawn_server(idleness_controller).await.unwrap();
     // Moving to bunch 0
     controller_port.request(SystemState::Idle).await.unwrap();
@@ -199,7 +203,11 @@ async fn test_inhibitions() {
     ]];
 
     let inhibition_sensor = MockInhibitionSensor::new();
-    let idleness_controller = IdlenessController::new(action_bunches, inhibition_sensor.spawn());
+    let idleness_controller = IdlenessController::new(
+        action_bunches,
+        ReconciliationBunches::new(None, None),
+        inhibition_sensor.spawn(),
+    );
     let controller_port = spawn_server(idleness_controller).await.unwrap();
 
     // Moving to bunch 0, shouldn't be inhibited, Delay inhibitors are ignored

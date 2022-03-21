@@ -18,8 +18,31 @@ impl Action {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub struct Stop;
+/// Catch-up actions to reconcile the state.
+///
+/// Since a [Sequencer](crate::system::sequencer::Sequencer) may be set to start
+/// at any point in its sequence, we may need to reconcile the state left-over
+/// by a previously running [IdlenessController], to prevent weird behavior on
+/// environment change. However, just executing and rolling back any actions
+/// immediately could prove disruptive to the user, so we defer the execution of
+/// additional actions until the next idleness bunch and the rollback until the
+/// next user activity.
+pub struct ReconciliationBunches {
+    on_idleness: Option<Vec<Action>>,
+    on_activity: Option<Vec<EffectorPort>>,
+}
+
+impl ReconciliationBunches {
+    pub fn new(
+        on_idleness: Option<Vec<Action>>,
+        on_activity: Option<Vec<EffectorPort>>,
+    ) -> ReconciliationBunches {
+        ReconciliationBunches {
+            on_idleness,
+            on_activity,
+        }
+    }
+}
 
 pub struct IdlenessController {
     action_bunches: Vec<Vec<Action>>,
@@ -27,17 +50,20 @@ pub struct IdlenessController {
     rollback_stack: Vec<EffectorPort>,
 
     inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
+    reconciliation_bunches: ReconciliationBunches,
 }
 
 impl IdlenessController {
     pub fn new(
         action_bunches: Vec<Vec<Action>>,
+        reconciliation_bunches: ReconciliationBunches,
         inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
     ) -> IdlenessController {
         IdlenessController {
             action_bunches,
             current_bunch: 0,
             inhibition_sensor,
+            reconciliation_bunches,
             rollback_stack: Vec::new(),
         }
     }
@@ -47,8 +73,18 @@ impl IdlenessController {
             return Err(anyhow!("Upcoming bunch is inhibited"));
         }
 
+        let reconciliation = self
+            .reconciliation_bunches
+            .on_idleness
+            .take()
+            .unwrap_or(Vec::new());
+        let action_iter = reconciliation
+            .iter()
+            .chain(self.action_bunches[self.current_bunch].iter());
+
         let mut immediate_rollback_ports: Vec<EffectorPort> = Vec::new();
-        for action in &self.action_bunches[self.current_bunch] {
+
+        for action in action_iter {
             log::debug!("Applying effect {}", action.effect.name);
             if let Err(e) = action.recipient.request(EffectorMessage::Execute).await {
                 log::error!("Failed to apply effect {}: {:?}", action.effect.name, e);
@@ -114,6 +150,9 @@ impl IdlenessController {
 
     async fn handle_wakeup(&mut self) -> Result<()> {
         log::info!("System awakened, rolling back all effects");
+        if let Some(mut reconciliation) = self.reconciliation_bunches.on_activity.take() {
+            rollback_all(&mut reconciliation).await;
+        }
         rollback_all(&mut self.rollback_stack).await;
         self.current_bunch = 0;
         Ok(())
