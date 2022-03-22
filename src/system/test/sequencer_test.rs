@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{env, time::Duration};
 
 use crate::{
     armaf::{self, ActorPort},
@@ -10,8 +10,6 @@ use tokio;
 
 #[tokio::test(start_paused = true)]
 async fn test_complete_sequence() {
-    std::env::set_var("RUST_LOG", "debug");
-    env_logger::init();
     let iface = mock::Interface::new(600);
     let sequence = vec![5, 5, 2];
     let (port, mut receiver) = ActorPort::make();
@@ -20,6 +18,7 @@ async fn test_complete_sequence() {
         iface.get_controller(),
         iface.get_idleness_channel(),
         &sequence,
+        0,
     );
     let sequencer_port = sequencer
         .spawn()
@@ -69,6 +68,7 @@ async fn test_interruptions() {
         iface.get_controller(),
         iface.get_idleness_channel(),
         &sequence,
+        0,
     );
     let sequencer_port = sequencer
         .spawn()
@@ -81,9 +81,7 @@ async fn test_interruptions() {
     iface.notify_state_transition(SystemState::Idle).unwrap();
     assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
 
-    advance_by_secs(6).await;
-    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
-    assert_elapsed_time(&sequencer_port, 10).await;
+    idleness_step(6, &mut receiver, Ok(()), &sequencer_port, 10).await;
 
     iface
         .notify_state_transition(SystemState::Awakened)
@@ -97,13 +95,8 @@ async fn test_interruptions() {
     assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
     assert_elapsed_time(&sequencer_port, 5).await;
 
-    advance_by_secs(6).await;
-    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
-    assert_elapsed_time(&sequencer_port, 10).await;
-
-    advance_by_secs(3).await;
-    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
-    assert_elapsed_time(&sequencer_port, 12).await;
+    idleness_step(6, &mut receiver, Ok(()), &sequencer_port, 10).await;
+    idleness_step(3, &mut receiver, Ok(()), &sequencer_port, 12).await;
 
     iface
         .notify_state_transition(SystemState::Awakened)
@@ -126,6 +119,7 @@ async fn test_actor_errors() {
         iface.get_controller(),
         iface.get_idleness_channel(),
         &sequence,
+        0,
     );
     let sequencer_port = sequencer
         .spawn()
@@ -154,26 +148,17 @@ async fn test_actor_errors() {
     assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
     assert_elapsed_time(&sequencer_port, 5).await;
 
-    advance_by_secs(6).await;
-    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
-    assert_elapsed_time(&sequencer_port, 10).await;
-
-    advance_by_secs(6).await;
-    assert_request_came(
+    idleness_step(6, &mut receiver, Ok(()), &sequencer_port, 10).await;
+    idleness_step(
+        6,
         &mut receiver,
-        SystemState::Idle,
         Err(anyhow!("Forced error")),
+        &sequencer_port,
+        10,
     )
     .await;
-    assert_elapsed_time(&sequencer_port, 10).await;
-
-    advance_by_secs(6).await;
-    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
-    assert_elapsed_time(&sequencer_port, 15).await;
-
-    advance_by_secs(3).await;
-    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
-    assert_elapsed_time(&sequencer_port, 17).await;
+    idleness_step(6, &mut receiver, Ok(()), &sequencer_port, 15).await;
+    idleness_step(3, &mut receiver, Ok(()), &sequencer_port, 17).await;
 
     iface
         .notify_state_transition(SystemState::Awakened)
@@ -185,6 +170,75 @@ async fn test_actor_errors() {
     drop(receiver);
     sequencer_port.await_shutdown().await;
     assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 600);
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_initial_position_from_awakened() {
+    let iface = mock::Interface::new(600);
+    let sequence = vec![1, 2, 3, 4];
+    let (port, mut receiver) = ActorPort::make();
+    let sequencer = Sequencer::new(
+        port,
+        iface.get_controller(),
+        iface.get_idleness_channel(),
+        &sequence,
+        1,
+    );
+    let sequencer_port = sequencer
+        .spawn()
+        .await
+        .expect("Sequencer failed to initialize");
+
+    assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 2);
+    assert_elapsed_time(&sequencer_port, 1).await;
+
+    iface.notify_state_transition(SystemState::Idle).unwrap();
+    assert_request_came(&mut receiver, SystemState::Idle, Ok(())).await;
+    assert_elapsed_time(&sequencer_port, 3).await;
+    assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 1);
+
+    idleness_step(4, &mut receiver, Ok(()), &sequencer_port, 6).await;
+    assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 1);
+
+    iface
+        .notify_state_transition(SystemState::Awakened)
+        .unwrap();
+    assert_request_came(&mut receiver, SystemState::Awakened, Ok(())).await;
+    assert_elapsed_time(&sequencer_port, 0).await;
+    assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_initial_position_from_idle() {
+    let iface = mock::Interface::new(600);
+    iface.notify_state_transition(SystemState::Idle).unwrap();
+    let sequence = vec![1, 2, 3, 4];
+    let (port, mut receiver) = ActorPort::make();
+    let sequencer = Sequencer::new(
+        port,
+        iface.get_controller(),
+        iface.get_idleness_channel(),
+        &sequence,
+        1,
+    );
+    let sequencer_port = sequencer
+        .spawn()
+        .await
+        .expect("Sequencer failed to initialize");
+
+    assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 1);
+    assert_elapsed_time(&sequencer_port, 1).await;
+
+    idleness_step(3, &mut receiver, Ok(()), &sequencer_port, 3).await;
+    idleness_step(4, &mut receiver, Ok(()), &sequencer_port, 6).await;
+    assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 1);
+
+    iface
+        .notify_state_transition(SystemState::Awakened)
+        .unwrap();
+    assert_request_came(&mut receiver, SystemState::Awakened, Ok(())).await;
+    assert_elapsed_time(&sequencer_port, 0).await;
+    assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 1);
 }
 
 async fn assert_request_came(
@@ -211,4 +265,16 @@ async fn assert_elapsed_time(
         .await
         .expect("couldn't get running time from Sequencer");
     assert_eq!(res, Duration::from_secs(expected_seconds));
+}
+
+async fn idleness_step(
+    advance_secs: u64,
+    receiver: &mut armaf::ActorReceiver<SystemState, (), anyhow::Error>,
+    response: Result<()>,
+    sequencer_port: &ActorPort<GetRunningTime, Duration, ()>,
+    expected_seconds: u64,
+) {
+    advance_by_secs(advance_secs).await;
+    assert_request_came(receiver, SystemState::Idle, response).await;
+    assert_elapsed_time(sequencer_port, expected_seconds).await;
 }

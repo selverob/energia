@@ -98,6 +98,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
                 self.dependency_provider.get_display_controller(),
                 self.dependency_provider.get_idleness_channel(),
                 &durations_to_timeouts(&durations),
+                0,
             );
             let sequencer_handle = sequencer.spawn().await?;
             tokio::select! {

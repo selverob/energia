@@ -30,6 +30,7 @@ pub struct Sequencer<C: DisplayServerController> {
     original_timeout: Option<i16>,
     child_port: armaf::ActorPort<SystemState, (), anyhow::Error>,
     command_receiver: Option<armaf::ActorReceiver<GetRunningTime, Duration, ()>>,
+    initial_position_dirty: bool,
 }
 
 impl<C: DisplayServerController> Sequencer<C> {
@@ -38,16 +39,18 @@ impl<C: DisplayServerController> Sequencer<C> {
         ds_controller: C,
         state_channel: watch::Receiver<SystemState>,
         timeout_sequence: &Vec<u64>,
+        starting_position: usize,
     ) -> Sequencer<C> {
         Sequencer {
             timeout_sequence: timeout_sequence.clone(),
-            current_position: 0,
+            current_position: starting_position,
             controller: ds_controller,
             state_channel,
             position_changed_at: Instant::now(),
             original_timeout: None,
-            child_port: child_port,
+            child_port,
             command_receiver: None,
+            initial_position_dirty: false,
         }
     }
 
@@ -77,7 +80,15 @@ impl<C: DisplayServerController> Sequencer<C> {
                 None
             }
         };
-        self.set_ds_timeout(self.timeout_sequence[0] as i16)
+        self.initial_position_dirty =
+            self.current_position != 0 && *self.state_channel.borrow() == SystemState::Awakened;
+        log::debug!("Initial position dirty? {}", self.initial_position_dirty);
+        let initial_timeout_index = if self.initial_position_dirty {
+            self.current_position
+        } else {
+            0
+        };
+        self.set_ds_timeout(self.timeout_sequence[initial_timeout_index] as i16)
             .await
             .context("Failed to set initial timeout on the display server")?;
         Ok(())
@@ -94,12 +105,16 @@ impl<C: DisplayServerController> Sequencer<C> {
     }
 
     async fn main_loop(&mut self) {
-        // We want reuse the sleep future, but it needs to finish at least one sleep
-        let sleep = tokio::time::sleep(Duration::ZERO);
+        // We want reuse the sleep future, so we need to set it to some initial
+        // timeout. If the initial position is handled by display server, this
+        // will just get ignored and eventually reset. If the initial position
+        // is internally handled, this will ensure it fires.
+        let sleep = tokio::time::sleep(Duration::from_secs(
+            self.timeout_sequence[self.current_position],
+        ));
         tokio::pin!(sleep);
-        (&mut sleep).await;
         loop {
-            let reset_sleep = match self.loop_iteration(&mut sleep).await {
+            let was_state_change = match self.loop_iteration(&mut sleep).await {
                 Err(e) => {
                     if Self::is_terminating_error(e) {
                         return;
@@ -110,9 +125,21 @@ impl<C: DisplayServerController> Sequencer<C> {
                         true
                     }
                 }
-                Ok(reset) => reset,
+                Ok(was_state_change) => was_state_change,
             };
-            if reset_sleep && self.position_handleable_by_sleep() {
+            // We started within the sequence while the system was active, so
+            // the current display server timeout is not associated with
+            // position 0. Also, the last command wasn't a control command,
+            // so we have actually advanced our position
+            if self.initial_position_dirty && was_state_change {
+                log::debug!("Undirtying initial position");
+                if let Err(e) = self.set_ds_timeout(self.timeout_sequence[0] as i16).await {
+                    log::error!("Couldn't set display server timeout, first effect bunch may be executed at unexpected times: {}", e);
+                } else {
+                    self.initial_position_dirty = false;
+                }
+            }
+            if was_state_change && self.position_handleable_by_sleep() {
                 log::debug!("Resetting the sleep future");
                 sleep.as_mut().reset(
                     Instant::now()
@@ -141,21 +168,29 @@ impl<C: DisplayServerController> Sequencer<C> {
                 log::debug!("Display server channel fired");
                 change_result?;
                 let new_state = *self.state_channel.borrow_and_update();
+                let ds_position = if self.initial_position_dirty {
+                    self.current_position
+                } else {
+                    0
+                };
                 match (self.current_position, new_state) {
-                    (0, SystemState::Awakened) => {
+                    (position, SystemState::Awakened) if position == ds_position => {
                         log::error!("Received an unexpected awake from display server, is something else setting the timeouts?");
+                        Ok(false)
                     }
-                    (0, SystemState::Idle) => {
+                    (position, SystemState::Idle)if position == ds_position  => {
                         self.change_position_and_notify(PositionChange::Increment).await?;
+                        Ok(true)
                     }
                     (_, SystemState::Awakened) => {
                         self.change_position_and_notify(PositionChange::Reset).await?;
+                        Ok(true)
                     }
                     (_, SystemState::Idle) => {
                         log::error!("Received an unexpected idle from display server, is something else setting the timeouts?");
+                        Ok(false)
                     }
                 }
-                Ok(true)
             },
             res = self.command_receiver.as_mut().unwrap().recv() => {
                 log::debug!("Command receiver fired");
@@ -183,7 +218,9 @@ impl<C: DisplayServerController> Sequencer<C> {
     }
 
     fn position_handleable_by_sleep(&self) -> bool {
-        self.current_position != 0 && self.current_position < self.timeout_sequence.len()
+        self.current_position != 0
+            && self.current_position < self.timeout_sequence.len()
+            && !self.initial_position_dirty
     }
 
     async fn change_position_and_notify(&mut self, change: PositionChange) -> Result<()> {
@@ -217,9 +254,10 @@ impl<C: DisplayServerController> Sequencer<C> {
             Err(anyhow::Error::new(e))
         } else {
             log::debug!(
-                "Changing position {} to {}",
+                "Changing position {} to {} (internally handled = {})",
                 original_position,
-                self.current_position
+                self.current_position,
+                self.position_handleable_by_sleep(),
             );
             Ok(())
         }
