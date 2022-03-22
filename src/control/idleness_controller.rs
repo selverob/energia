@@ -7,9 +7,10 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use logind_zbus::manager::{InhibitType, Inhibitor, Mode};
 
+#[derive(Debug, Clone)]
 pub struct Action {
-    effect: Effect,
-    recipient: EffectorPort,
+    pub effect: Effect,
+    pub recipient: EffectorPort,
 }
 
 impl Action {
@@ -27,6 +28,7 @@ impl Action {
 /// immediately could prove disruptive to the user, so we defer the execution of
 /// additional actions until the next idleness bunch and the rollback until the
 /// next user activity.
+#[derive(Debug, Clone)]
 pub struct ReconciliationBunches {
     execute: Option<Vec<Action>>,
     rollback: Option<Vec<EffectorPort>>,
@@ -179,10 +181,6 @@ impl Server<SystemState, ()> for IdlenessController {
             SystemState::Idle => self.handle_idleness().await?,
         }
         Ok(())
-    }
-
-    async fn tear_down(&mut self) -> Result<()> {
-        self.handle_wakeup().await
     }
 }
 
