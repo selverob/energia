@@ -348,3 +348,73 @@ async fn test_reconciliation() {
     assert_eq!(rec1.ongoing_effect_count(), 0);
     assert_eq!(rec2.ongoing_effect_count(), 0);
 }
+
+#[tokio::test]
+async fn test_nonzero_starting_position() {
+    let ec1 = EffectsCounter::new();
+    let rec1 = EffectsCounter::new();
+    let rec2 = EffectsCounter::new();
+
+    let action_bunches = vec![
+        vec![make_action(
+            1,
+            1,
+            ec1.get_port(),
+            RollbackStrategy::OnActivity,
+        )],
+        vec![make_action(
+            2,
+            1,
+            ec1.get_port(),
+            RollbackStrategy::OnActivity,
+        )],
+        vec![make_action(
+            3,
+            1,
+            ec1.get_port(),
+            RollbackStrategy::OnActivity,
+        )],
+    ];
+
+    let reconciliation = ReconciliationBunches::new(
+        Some(vec![make_action(
+            1,
+            1,
+            rec1.get_port(),
+            RollbackStrategy::OnActivity,
+        )]),
+        Some(vec![rec2.get_port()]),
+    );
+
+    rec2.get_port()
+        .request(EffectorMessage::Execute)
+        .await
+        .unwrap();
+    let inhibition_sensor = MockInhibitionSensor::new();
+    let idleness_controller =
+        IdlenessController::new(action_bunches, 1, reconciliation, inhibition_sensor.spawn());
+    let controller_port = spawn_server(idleness_controller).await.unwrap();
+
+    controller_port.request(SystemState::Idle).await.unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 1);
+    assert_eq!(rec1.ongoing_effect_count(), 1);
+    assert_eq!(rec2.ongoing_effect_count(), 1);
+
+    controller_port.request(SystemState::Idle).await.unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 2);
+    assert_eq!(rec1.ongoing_effect_count(), 1);
+    assert_eq!(rec2.ongoing_effect_count(), 1);
+
+    controller_port
+        .request(SystemState::Idle)
+        .await
+        .expect_err("Controller didn't return an error on action bunch overflow");
+
+    controller_port
+        .request(SystemState::Awakened)
+        .await
+        .unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(rec1.ongoing_effect_count(), 0);
+    assert_eq!(rec2.ongoing_effect_count(), 0);
+}

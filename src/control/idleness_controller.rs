@@ -67,6 +67,9 @@ impl IdlenessController {
     }
 
     async fn handle_idleness(&mut self) -> Result<()> {
+        if self.current_bunch == self.action_bunches.len() {
+            return Err(anyhow!("No more action bunches to execute."));
+        }
         if self.is_current_bunch_inhibited().await {
             return Err(anyhow!("Upcoming bunch is inhibited"));
         }
