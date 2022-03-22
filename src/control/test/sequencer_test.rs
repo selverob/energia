@@ -19,6 +19,7 @@ async fn test_complete_sequence() {
         iface.get_idleness_channel(),
         &sequence,
         0,
+        Duration::ZERO,
     );
     let sequencer_port = sequencer
         .spawn()
@@ -69,6 +70,7 @@ async fn test_interruptions() {
         iface.get_idleness_channel(),
         &sequence,
         0,
+        Duration::ZERO,
     );
     let sequencer_port = sequencer
         .spawn()
@@ -120,6 +122,7 @@ async fn test_actor_errors() {
         iface.get_idleness_channel(),
         &sequence,
         0,
+        Duration::ZERO,
     );
     let sequencer_port = sequencer
         .spawn()
@@ -183,6 +186,7 @@ async fn test_initial_position_from_awakened() {
         iface.get_idleness_channel(),
         &sequence,
         1,
+        Duration::ZERO,
     );
     let sequencer_port = sequencer
         .spawn()
@@ -220,6 +224,7 @@ async fn test_initial_position_from_idle() {
         iface.get_idleness_channel(),
         &sequence,
         1,
+        Duration::ZERO,
     );
     let sequencer_port = sequencer
         .spawn()
@@ -239,6 +244,28 @@ async fn test_initial_position_from_idle() {
     assert_request_came(&mut receiver, SystemState::Awakened, Ok(())).await;
     assert_elapsed_time(&sequencer_port, 0).await;
     assert_eq!(iface.get_controller().get_idleness_timeout().unwrap(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_shortened_initial_sleep() {
+    let iface = mock::Interface::new(600);
+    iface.notify_state_transition(SystemState::Idle).unwrap();
+    let sequence = vec![10];
+    let (port, mut receiver) = ActorPort::make();
+    let sequencer = Sequencer::new(
+        port,
+        iface.get_controller(),
+        iface.get_idleness_channel(),
+        &sequence,
+        0,
+        Duration::from_secs(5),
+    );
+    let sequencer_port = sequencer
+        .spawn()
+        .await
+        .expect("Sequencer failed to initialize");
+
+    idleness_step(6, &mut receiver, Ok(()), &sequencer_port, 10).await;
 }
 
 async fn assert_request_came(

@@ -98,16 +98,17 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
                 self.dependency_provider.get_idleness_channel(),
                 &durations_to_timeouts(&durations),
                 0,
+                Duration::ZERO,
             );
-            let sequencer_handle = sequencer.spawn().await?;
+            let sequencer_port = sequencer.spawn().await?;
             tokio::select! {
                 _ = self.handle_child.as_mut().unwrap().should_terminate() => {
                     log::info!("Handle dropped, terminating");
-                    sequencer_handle.await_shutdown().await;
+                    sequencer_port.await_shutdown().await;
                     return Ok(());
                 }
                 _ = self.power_source_receiver.changed() => {
-                    sequencer_handle.await_shutdown().await;
+                    sequencer_port.await_shutdown().await;
                 }
             }
         }

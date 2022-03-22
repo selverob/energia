@@ -31,6 +31,7 @@ pub struct Sequencer<C: DisplayServerController> {
     child_port: armaf::ActorPort<SystemState, (), anyhow::Error>,
     command_receiver: Option<armaf::ActorReceiver<GetRunningTime, Duration, ()>>,
     initial_position_dirty: bool,
+    shorten_initial_sleep_by: Duration,
 }
 
 impl<C: DisplayServerController> Sequencer<C> {
@@ -40,6 +41,7 @@ impl<C: DisplayServerController> Sequencer<C> {
         state_channel: watch::Receiver<SystemState>,
         timeout_sequence: &Vec<u64>,
         starting_position: usize,
+        shorten_initial_sleep_by: Duration,
     ) -> Sequencer<C> {
         Sequencer {
             timeout_sequence: timeout_sequence.clone(),
@@ -51,6 +53,7 @@ impl<C: DisplayServerController> Sequencer<C> {
             child_port,
             command_receiver: None,
             initial_position_dirty: false,
+            shorten_initial_sleep_by,
         }
     }
 
@@ -109,9 +112,10 @@ impl<C: DisplayServerController> Sequencer<C> {
         // timeout. If the initial position is handled by display server, this
         // will just get ignored and eventually reset. If the initial position
         // is internally handled, this will ensure it fires.
-        let sleep = tokio::time::sleep(Duration::from_secs(
-            self.timeout_sequence[self.current_position],
-        ));
+        let sleep = tokio::time::sleep(
+            Duration::from_secs(self.timeout_sequence[self.current_position])
+                .saturating_sub(self.shorten_initial_sleep_by),
+        );
         tokio::pin!(sleep);
         loop {
             let was_state_change = match self.loop_iteration(&mut sleep).await {
