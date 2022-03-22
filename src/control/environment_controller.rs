@@ -90,6 +90,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
 
             let idleness_controller = IdlenessController::new(
                 actions,
+                0,
                 ReconciliationBunches::new(None, None),
                 inhibition_sensor.clone(),
             );

@@ -6,7 +6,7 @@ use std::{
 use logind_zbus::manager::{InhibitType, InhibitTypes, Inhibitor, Mode};
 
 use crate::{
-    armaf::{spawn_server, ActorPort, Effect, EffectorPort, RollbackStrategy},
+    armaf::{spawn_server, ActorPort, Effect, EffectorMessage, EffectorPort, RollbackStrategy},
     control::idleness_controller::{Action, IdlenessController, ReconciliationBunches},
     external::display_server::SystemState,
     system::inhibition_sensor::GetInhibitions,
@@ -132,6 +132,7 @@ async fn test_without_inhibitors() {
     let inhibition_sensor = MockInhibitionSensor::new();
     let idleness_controller = IdlenessController::new(
         action_bunches,
+        0,
         ReconciliationBunches::new(None, None),
         inhibition_sensor.spawn(),
     );
@@ -205,6 +206,7 @@ async fn test_inhibitions() {
     let inhibition_sensor = MockInhibitionSensor::new();
     let idleness_controller = IdlenessController::new(
         action_bunches,
+        0,
         ReconciliationBunches::new(None, None),
         inhibition_sensor.spawn(),
     );
@@ -265,4 +267,84 @@ async fn test_inhibitions() {
         .unwrap();
     assert_eq!(ec1.ongoing_effect_count(), 0);
     assert_eq!(ec2.ongoing_effect_count(), 0);
+}
+
+#[tokio::test]
+async fn test_reconciliation() {
+    let ec1 = EffectsCounter::new();
+    let rec1 = EffectsCounter::new();
+    let rec2 = EffectsCounter::new();
+
+    let action_bunches = vec![
+        vec![make_action(
+            1,
+            1,
+            ec1.get_port(),
+            RollbackStrategy::OnActivity,
+        )],
+        vec![make_action(
+            2,
+            1,
+            ec1.get_port(),
+            RollbackStrategy::OnActivity,
+        )],
+        vec![make_action(
+            3,
+            1,
+            ec1.get_port(),
+            RollbackStrategy::OnActivity,
+        )],
+    ];
+
+    let reconciliation = ReconciliationBunches::new(
+        Some(vec![
+            Action::new(
+                Effect::new(
+                    "1-1".to_owned(),
+                    vec![InhibitType::Idle],
+                    RollbackStrategy::OnActivity,
+                ),
+                rec1.get_port(),
+            ),
+            make_action(1, 2, rec1.get_port(), RollbackStrategy::OnActivity),
+        ]),
+        Some(vec![rec2.get_port()]),
+    );
+
+    rec2.get_port()
+        .request(EffectorMessage::Execute)
+        .await
+        .unwrap();
+    let inhibition_sensor = MockInhibitionSensor::new();
+    let idleness_controller =
+        IdlenessController::new(action_bunches, 0, reconciliation, inhibition_sensor.spawn());
+    let controller_port = spawn_server(idleness_controller).await.unwrap();
+
+    inhibition_sensor.add_inhibitor_with_types(Mode::Block, &vec![InhibitType::Idle]);
+    controller_port
+        .request(SystemState::Idle)
+        .await
+        .expect_err("Bunch applied even when inhibited");
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(rec1.ongoing_effect_count(), 0);
+    assert_eq!(rec2.ongoing_effect_count(), 1);
+
+    inhibition_sensor.reset();
+    controller_port.request(SystemState::Idle).await.unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 1);
+    assert_eq!(rec1.ongoing_effect_count(), 2);
+    assert_eq!(rec2.ongoing_effect_count(), 1);
+
+    controller_port.request(SystemState::Idle).await.unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 2);
+    assert_eq!(rec1.ongoing_effect_count(), 2);
+    assert_eq!(rec2.ongoing_effect_count(), 1);
+
+    controller_port
+        .request(SystemState::Awakened)
+        .await
+        .unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(rec1.ongoing_effect_count(), 0);
+    assert_eq!(rec2.ongoing_effect_count(), 0);
 }

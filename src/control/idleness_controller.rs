@@ -28,19 +28,16 @@ impl Action {
 /// additional actions until the next idleness bunch and the rollback until the
 /// next user activity.
 pub struct ReconciliationBunches {
-    on_idleness: Option<Vec<Action>>,
-    on_activity: Option<Vec<EffectorPort>>,
+    execute: Option<Vec<Action>>,
+    rollback: Option<Vec<EffectorPort>>,
 }
 
 impl ReconciliationBunches {
     pub fn new(
-        on_idleness: Option<Vec<Action>>,
-        on_activity: Option<Vec<EffectorPort>>,
+        execute: Option<Vec<Action>>,
+        rollback: Option<Vec<EffectorPort>>,
     ) -> ReconciliationBunches {
-        ReconciliationBunches {
-            on_idleness,
-            on_activity,
-        }
+        ReconciliationBunches { execute, rollback }
     }
 }
 
@@ -56,12 +53,13 @@ pub struct IdlenessController {
 impl IdlenessController {
     pub fn new(
         action_bunches: Vec<Vec<Action>>,
+        initial_bunch: usize,
         reconciliation_bunches: ReconciliationBunches,
         inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
     ) -> IdlenessController {
         IdlenessController {
             action_bunches,
-            current_bunch: 0,
+            current_bunch: initial_bunch,
             inhibition_sensor,
             reconciliation_bunches,
             rollback_stack: Vec::new(),
@@ -75,7 +73,7 @@ impl IdlenessController {
 
         let reconciliation = self
             .reconciliation_bunches
-            .on_idleness
+            .execute
             .take()
             .unwrap_or(Vec::new());
         let action_iter = reconciliation
@@ -128,6 +126,13 @@ impl IdlenessController {
         let upcoming_inhibition_types: Vec<InhibitType> = dedup_inhibit_types(
             &self.action_bunches[self.current_bunch]
                 .iter()
+                .chain(
+                    self.reconciliation_bunches
+                        .execute
+                        .as_ref()
+                        .unwrap_or(&Vec::new())
+                        .iter(),
+                )
                 .flat_map(|e| e.effect.inhibited_by.clone())
                 .collect(),
         );
@@ -150,7 +155,7 @@ impl IdlenessController {
 
     async fn handle_wakeup(&mut self) -> Result<()> {
         log::info!("System awakened, rolling back all effects");
-        if let Some(mut reconciliation) = self.reconciliation_bunches.on_activity.take() {
+        if let Some(mut reconciliation) = self.reconciliation_bunches.rollback.take() {
             rollback_all(&mut reconciliation).await;
         }
         rollback_all(&mut self.rollback_stack).await;
