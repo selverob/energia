@@ -1,14 +1,12 @@
 use super::idleness_controller::{Action, IdlenessController};
 use crate::{
     armaf::{spawn_server, Effect, Effector, EffectorPort, Handle, HandleChild},
-    control::idleness_controller::ReconciliationBunches,
+    control::{idleness_controller::ReconciliationBunches, sequencer::Sequencer},
     external::{
         brightness::BrightnessController, dependency_provider::DependencyProvider,
         display_server::DisplayServer,
     },
-    system::{
-        self, inhibition_sensor::InhibitionSensor, sequencer::Sequencer, upower_sensor::PowerSource,
-    },
+    system::{self, inhibition_sensor::InhibitionSensor, upower_sensor::PowerSource},
 };
 use anyhow::{anyhow, Context, Result};
 use std::{collections::HashMap, time::Duration};

@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use crate::{
     armaf::{self, ActorPort},
+    control::sequencer::{GetRunningTime, Sequencer},
     external::display_server::{mock, DisplayServer, DisplayServerController, SystemState},
-    system::sequencer::{GetRunningTime, Sequencer},
 };
 use anyhow::{anyhow, Result};
 use tokio;
