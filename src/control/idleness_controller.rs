@@ -30,8 +30,8 @@ impl Action {
 /// next user activity.
 #[derive(Debug, Clone)]
 pub struct ReconciliationBunches {
-    execute: Option<Vec<Action>>,
-    rollback: Option<Vec<EffectorPort>>,
+    pub execute: Option<Vec<Action>>,
+    pub rollback: Option<Vec<EffectorPort>>,
 }
 
 impl ReconciliationBunches {

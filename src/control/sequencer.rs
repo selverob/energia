@@ -218,6 +218,7 @@ impl<C: DisplayServerController> Sequencer<C> {
             .set_ds_timeout(self.original_timeout.unwrap_or(-1i16))
             .await;
         self.child_port.await_shutdown().await;
+        log::debug!("Stopped");
         reset_result
     }
 

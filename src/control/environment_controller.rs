@@ -125,6 +125,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
                     log::info!("New power source is {:?}", power_source);
                     let new_sequence = self.sequence_for_power_source(power_source);
                     reconciliation_context = ReconciliationContext::calculate(&sequence, &new_sequence, running_time);
+                    log::debug!("Reconciliation context is {:?}", reconciliation_context);
                     sequence = new_sequence;
                 }
             }
@@ -238,10 +239,13 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
         Ok(())
     }
 
-    async fn tear_down(self) {
+    async fn tear_down(mut self) {
+        // Sequences contain actions - copies of ActorPorts Unless we get rid of
+        // all ActorPorts, the actors will never terminate and await_shutdown in
+        // terminate_effector will hang
+        self.sequences.clear();
         for (name, port) in self.spawned_effectors.into_iter() {
-            log::debug!("Shutting {} down", name);
-            if let Err(e) = Self::terminate_effector(port).await {
+            if let Err(e) = Self::terminate_effector(&name, port).await {
                 log::error!(
                     "Couldn't terminate effector {}, its effects may persist: {}",
                     name,
@@ -251,21 +255,26 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
         }
     }
 
-    async fn terminate_effector(port: EffectorPort) -> Result<()> {
+    async fn terminate_effector(name: &str, port: EffectorPort) -> Result<()> {
+        log::debug!("Shutting {} down", name);
         let running_effects = port
             .request(crate::armaf::EffectorMessage::CurrentlyAppliedEffects)
             .await
             .context("Couldn't get running effect count")?;
+        log::debug!("{} has {} outstanding effects", name, running_effects);
         for _ in 0..running_effects {
             port.request(crate::armaf::EffectorMessage::Rollback)
                 .await
                 .context("Couldn't roll back effect")?;
         }
+        log::debug!("All {} effects rolled back, awaiting shutdown", name);
         port.await_shutdown().await;
+        log::debug!("{} shut down", name);
         Ok(())
     }
 }
 
+#[derive(Debug)]
 struct ReconciliationContext {
     pub starting_bunch: usize,
     pub initial_sleep_shorten: Duration,
@@ -431,6 +440,10 @@ fn durations_to_timeouts(durations: &Vec<Duration>) -> Vec<u64> {
 
 #[cfg(test)]
 mod test {
+    use tokio::sync::mpsc;
+
+    use crate::armaf::RollbackStrategy;
+
     use super::*;
 
     #[test]
@@ -460,5 +473,91 @@ mod test {
         ];
         let timeouts = durations_to_timeouts(&durations);
         assert_eq!(timeouts, vec![5, 25, 0, 29, 3540]);
+    }
+
+    fn empty_action(bunch: usize, effect: usize) -> Action {
+        let (message_sender, _) = tokio::sync::mpsc::channel(1);
+        let (_, shutdown_notifier) = tokio::sync::watch::channel(());
+        Action::new(
+            Effect::new(
+                format!("{}-{}", bunch, effect),
+                vec![],
+                RollbackStrategy::OnActivity,
+            ),
+            crate::armaf::ActorPort::new(message_sender, shutdown_notifier),
+        )
+    }
+
+    fn make_sequence(description: &Vec<(Duration, usize)>) -> Sequence {
+        let mut sequence = Vec::new();
+        for (bunch_index, (timeout, action_count)) in description.iter().enumerate() {
+            let bunch = (0..*action_count)
+                .map(|i| empty_action(bunch_index, i))
+                .collect();
+            sequence.push((*timeout, bunch));
+        }
+        sequence
+    }
+
+    fn action_names(actions: Vec<Action>) -> Vec<String> {
+        actions
+            .into_iter()
+            .map(|action| action.effect.name)
+            .collect()
+    }
+
+    #[test]
+    fn test_reconciliation_at_start() {
+        let seq1 = make_sequence(&vec![
+            (Duration::from_secs(30), 3),
+            (Duration::from_secs(30), 2),
+        ]);
+        let seq2 = make_sequence(&vec![
+            (Duration::from_secs(40), 2),
+            (Duration::from_secs(10), 5),
+        ]);
+        let context = ReconciliationContext::calculate(&seq1, &seq2, Duration::ZERO);
+        assert_eq!(context.initial_sleep_shorten, Duration::ZERO);
+        assert_eq!(context.starting_bunch, 0);
+        assert!(context.reconciliation_bunches.execute.is_none());
+        assert!(context.reconciliation_bunches.rollback.is_none());
+    }
+
+    #[test]
+    fn test_reconciliation_rollback() {
+        let seq1 = make_sequence(&vec![
+            (Duration::from_secs(30), 3),
+            (Duration::from_secs(30), 2),
+        ]);
+        let seq2 = make_sequence(&vec![
+            (Duration::from_secs(40), 2),
+            (Duration::from_secs(10), 5),
+        ]);
+        let context = ReconciliationContext::calculate(&seq1, &seq2, Duration::from_secs(45));
+        assert_eq!(context.initial_sleep_shorten, Duration::from_secs(5));
+        assert_eq!(context.starting_bunch, 1);
+        assert!(context.reconciliation_bunches.execute.is_none());
+        assert_eq!(context.reconciliation_bunches.rollback.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_reconciliation_basic() {
+        let seq1 = make_sequence(&vec![
+            (Duration::from_secs(30), 3),
+            (Duration::from_secs(30), 3),
+            (Duration::from_secs(30), 2),
+        ]);
+        let seq2 = make_sequence(&vec![
+            (Duration::from_secs(40), 5),
+            (Duration::from_secs(60), 5),
+        ]);
+        let context = ReconciliationContext::calculate(&seq1, &seq2, Duration::from_secs(65));
+        assert_eq!(context.initial_sleep_shorten, Duration::from_secs(25));
+        assert_eq!(context.starting_bunch, 1);
+        assert_eq!(
+            action_names(context.reconciliation_bunches.execute.unwrap()),
+            vec!["0-3", "0-4"]
+        );
+        assert_eq!(context.reconciliation_bunches.rollback.unwrap().len(), 3);
     }
 }
