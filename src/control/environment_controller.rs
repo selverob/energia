@@ -310,11 +310,12 @@ impl ReconciliationContext {
         let (provisional_starting_bunch, provisional_sleep_shorten) =
             Self::passed_bunch_count(new_sequence, running_time);
         // If the system is already idle, we don't want it to wake up on power source change
-        let (new_starting_bunch, sleep_shorten) = if executed_old_bunches == 1 && provisional_starting_bunch == 0 {
-            (1, Duration::ZERO)
-        } else {
-            (provisional_starting_bunch, provisional_sleep_shorten)
-        };
+        let (new_starting_bunch, sleep_shorten) =
+            if executed_old_bunches == 1 && provisional_starting_bunch == 0 {
+                (1, Duration::ZERO)
+            } else {
+                (provisional_starting_bunch, provisional_sleep_shorten)
+            };
         let executed_actions: Vec<&Action> = old_sequence[0..executed_old_bunches]
             .iter()
             .flat_map(|bunch| &bunch.1)
@@ -367,7 +368,7 @@ impl ReconciliationContext {
         // by itself.
         let ports_to_rollback: Vec<EffectorPort> = executed_actions
             .iter()
-            .map(|action| {action.recipient.clone()})
+            .map(|action| action.recipient.clone())
             .collect();
 
         let execute = if actions_to_execute.len() > 0 {

@@ -360,19 +360,14 @@ async fn test_rollback_on_zero_position() {
     let ec1 = EffectsCounter::new();
     let rec1 = EffectsCounter::new();
 
-    let action_bunches = vec![
-        vec![make_action(
-            1,
-            1,
-            ec1.get_port(),
-            RollbackStrategy::OnActivity,
-        )],
-    ];
+    let action_bunches = vec![vec![make_action(
+        1,
+        1,
+        ec1.get_port(),
+        RollbackStrategy::OnActivity,
+    )]];
 
-    let reconciliation = ReconciliationBunches::new(
-        None,
-        Some(vec![rec1.get_port()]),
-    );
+    let reconciliation = ReconciliationBunches::new(None, Some(vec![rec1.get_port()]));
 
     rec1.get_port()
         .request(EffectorMessage::Execute)
@@ -381,8 +376,9 @@ async fn test_rollback_on_zero_position() {
     let inhibition_sensor = MockInhibitionSensor::new();
     let idleness_controller =
         IdlenessController::new(action_bunches, 0, reconciliation, inhibition_sensor.spawn());
-    let controller_port = spawn_server(idleness_controller).await.unwrap();
+    let _controller_port = spawn_server(idleness_controller).await.unwrap();
 
     assert_eq!(ec1.ongoing_effect_count(), 0);
     assert_eq!(rec1.ongoing_effect_count(), 0);
+    _controller_port.await_shutdown().await;
 }
