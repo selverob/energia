@@ -175,6 +175,13 @@ impl Server<SystemState, ()> for IdlenessController {
         "IdlenessController".to_owned()
     }
 
+    async fn initialize(&mut self) -> Result<()> {
+        if self.current_bunch == 0 && self.reconciliation_bunches.rollback.is_some() {
+            rollback_all(&mut self.reconciliation_bunches.rollback.take().unwrap()).await;
+        }
+        Ok(())
+    }
+
     async fn handle_message(&mut self, system_state: SystemState) -> Result<()> {
         match system_state {
             SystemState::Awakened => self.handle_wakeup().await?,

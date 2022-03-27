@@ -307,8 +307,14 @@ impl ReconciliationContext {
             return Self::empty();
         }
         let (executed_old_bunches, _) = Self::passed_bunch_count(old_sequence, running_time);
-        let (new_starting_bunch, sleep_shorten) =
+        let (provisional_starting_bunch, provisional_sleep_shorten) =
             Self::passed_bunch_count(new_sequence, running_time);
+        // If the system is already idle, we don't want it to wake up on power source change
+        let (new_starting_bunch, sleep_shorten) = if executed_old_bunches == 1 && provisional_starting_bunch == 0 {
+            (1, Duration::ZERO)
+        } else {
+            (provisional_starting_bunch, provisional_sleep_shorten)
+        };
         let executed_actions: Vec<&Action> = old_sequence[0..executed_old_bunches]
             .iter()
             .flat_map(|bunch| &bunch.1)
@@ -356,16 +362,12 @@ impl ReconciliationContext {
             })
             .collect();
 
-        let effect_names_to_rollback: HashSet<&String> = old_set.difference(&new_set).collect();
+        // We need to rollback everything that the old controller executed,
+        // since the idleness controller doesn't initialize its rollback stack
+        // by itself.
         let ports_to_rollback: Vec<EffectorPort> = executed_actions
             .iter()
-            .filter_map(|action| {
-                if effect_names_to_rollback.contains(&action.effect.name) {
-                    Some(action.recipient.clone())
-                } else {
-                    None
-                }
-            })
+            .map(|action| {action.recipient.clone()})
             .collect();
 
         let execute = if actions_to_execute.len() > 0 {
@@ -440,8 +442,6 @@ fn durations_to_timeouts(durations: &Vec<Duration>) -> Vec<u64> {
 
 #[cfg(test)]
 mod test {
-    use tokio::sync::mpsc;
-
     use crate::armaf::RollbackStrategy;
 
     use super::*;
@@ -537,7 +537,7 @@ mod test {
         assert_eq!(context.initial_sleep_shorten, Duration::from_secs(5));
         assert_eq!(context.starting_bunch, 1);
         assert!(context.reconciliation_bunches.execute.is_none());
-        assert_eq!(context.reconciliation_bunches.rollback.unwrap().len(), 1);
+        assert_eq!(context.reconciliation_bunches.rollback.unwrap().len(), 3);
     }
 
     #[test]
@@ -553,6 +553,26 @@ mod test {
         ]);
         let context = ReconciliationContext::calculate(&seq1, &seq2, Duration::from_secs(65));
         assert_eq!(context.initial_sleep_shorten, Duration::from_secs(25));
+        assert_eq!(context.starting_bunch, 1);
+        assert_eq!(
+            action_names(context.reconciliation_bunches.execute.unwrap()),
+            vec!["0-3", "0-4"]
+        );
+        assert_eq!(context.reconciliation_bunches.rollback.unwrap().len(), 6);
+    }
+
+    #[test]
+    fn test_reconciliation_stays_in_idle() {
+        let seq1 = make_sequence(&vec![
+            (Duration::from_secs(10), 3),
+            (Duration::from_secs(20), 3),
+        ]);
+        let seq2 = make_sequence(&vec![
+            (Duration::from_secs(20), 5),
+            (Duration::from_secs(40), 5),
+        ]);
+        let context = ReconciliationContext::calculate(&seq1, &seq2, Duration::from_secs(15));
+        assert_eq!(context.initial_sleep_shorten, Duration::ZERO);
         assert_eq!(context.starting_bunch, 1);
         assert_eq!(
             action_names(context.reconciliation_bunches.execute.unwrap()),
