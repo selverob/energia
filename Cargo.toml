@@ -22,3 +22,6 @@ upower_dbus = "0.2"
 x11rb = { version = "0.9.0", features = ["screensaver", "xtest", "dpms"] }
 zbus = {version = "2.0", default-features = false, features = ["tokio"]}
 zvariant = "2.5.0"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] } # Allows stopping time and advancing it the way we want in tests

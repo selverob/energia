@@ -95,17 +95,25 @@ impl<B: BrightnessController, D: ds::DisplayServerController> DisplayEffectorAct
             log::error!("Couldn't prepare DPMS for display effector: {}", e);
         }
     }
+
+    fn currently_applied_effects(&self) -> usize {
+        match self.current_state {
+            DisplayState::Off => 2,
+            DisplayState::Dimmed => 1,
+            DisplayState::On => 0,
+        }
+    }
 }
 
 #[async_trait]
-impl<B: BrightnessController, D: ds::DisplayServerController> Server<EffectorMessage, ()>
+impl<B: BrightnessController, D: ds::DisplayServerController> Server<EffectorMessage, usize>
     for DisplayEffectorActor<B, D>
 {
     fn get_name(&self) -> String {
         "DisplayEffector".to_owned()
     }
 
-    async fn handle_message(&mut self, payload: EffectorMessage) -> Result<()> {
+    async fn handle_message(&mut self, payload: EffectorMessage) -> Result<usize> {
         match (self.current_state, payload) {
             (DisplayState::On, EffectorMessage::Execute) => {
                 self.original_brightness = Some(self.dim_screen().await?);
@@ -136,8 +144,11 @@ impl<B: BrightnessController, D: ds::DisplayServerController> Server<EffectorMes
                 self.set_dpms_level(ds::DPMSLevel::On).await?;
                 self.current_state = DisplayState::Dimmed;
             }
+            (_, EffectorMessage::CurrentlyAppliedEffects) => {
+                // We return the number of applied effects at the end anyway
+            }
         }
-        Ok(())
+        Ok(self.currently_applied_effects())
     }
 
     async fn initialize(&mut self) -> Result<()> {

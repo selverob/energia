@@ -19,31 +19,53 @@ async fn test_happy_path() {
     ))
     .await
     .expect("Actor initialization failed");
-    port.request(EffectorMessage::Execute).await.unwrap();
+
+    let res = port
+        .request(EffectorMessage::CurrentlyAppliedEffects)
+        .await
+        .expect("Couldn't get current effect count");
+    assert_eq!(res, 0);
+
+    let res = port.request(EffectorMessage::Execute).await.unwrap();
     sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
     assert_eq!(session_proxy.idle_hint().await.unwrap(), true);
+    assert_eq!(res, 1);
 
-    port.request(EffectorMessage::Execute).await.unwrap();
+    let res = port.request(EffectorMessage::Execute).await.unwrap();
     sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
     assert_eq!(session_proxy.locked_hint().await.unwrap(), true);
+    assert_eq!(res, 2);
 
     port.request(EffectorMessage::Execute)
         .await
         .expect_err("Effector allowed state machine overflow");
 
-    port.request(EffectorMessage::Rollback).await.unwrap();
+    let res = port
+        .request(EffectorMessage::CurrentlyAppliedEffects)
+        .await
+        .expect("Couldn't get current effect count");
+    assert_eq!(res, 2);
+
+    let res = port.request(EffectorMessage::Rollback).await.unwrap();
     sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
     assert_eq!(session_proxy.idle_hint().await.unwrap(), true);
     assert_eq!(session_proxy.locked_hint().await.unwrap(), false);
+    assert_eq!(res, 1);
 
-    port.request(EffectorMessage::Rollback).await.unwrap();
+    let res = port.request(EffectorMessage::Rollback).await.unwrap();
     sleep(Duration::from_millis(200)); // See the comment in SessionEffector#handle_message
     assert_eq!(session_proxy.idle_hint().await.unwrap(), false);
     assert_eq!(session_proxy.locked_hint().await.unwrap(), false);
+    assert_eq!(res, 0);
 
     port.request(EffectorMessage::Rollback)
         .await
         .expect_err("Effector allowed state machine underflow");
+    let res = port
+        .request(EffectorMessage::CurrentlyAppliedEffects)
+        .await
+        .expect("Couldn't get current effect count");
+    assert_eq!(res, 0);
 }
 
 async fn get_session_proxy<'c>(

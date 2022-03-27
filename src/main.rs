@@ -38,9 +38,11 @@ async fn main() {
     .await
     .expect("Couldn't start UPower sensor");
     let environment_controller =
-        EnvironmentController::new(&config, system_dependencies, upower_channel)
-            .expect("Couldn't construct environment controller");
-    let handle = environment_controller.spawn().await;
+        EnvironmentController::new(&config, system_dependencies, upower_channel);
+    let handle = environment_controller
+        .spawn()
+        .await
+        .expect("Couldn't spawn environment controller");
     tokio::signal::ctrl_c().await.expect("Signal wait failed");
     handle.await_shutdown().await;
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;

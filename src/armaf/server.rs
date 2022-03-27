@@ -157,6 +157,7 @@ where
                     if let Err(e) = server.tear_down().await {
                         log::error!("{} failed to tear down: {}", name, e);
                     }
+                    log::debug!("{} stopped", name);
                     return;
                 }
             }

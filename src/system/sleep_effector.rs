@@ -52,7 +52,7 @@ impl SleepEffectorActor {
 }
 
 #[async_trait]
-impl Server<EffectorMessage, ()> for SleepEffectorActor {
+impl Server<EffectorMessage, usize> for SleepEffectorActor {
     fn get_name(&self) -> String {
         "SleepEffector".to_owned()
     }
@@ -64,11 +64,12 @@ impl Server<EffectorMessage, ()> for SleepEffectorActor {
         Ok(())
     }
 
-    async fn handle_message(&mut self, payload: EffectorMessage) -> Result<()> {
+    async fn handle_message(&mut self, payload: EffectorMessage) -> Result<usize> {
         match payload {
             EffectorMessage::Execute => {
                 log::info!("Putting system to sleep");
                 self.manager_proxy.as_ref().unwrap().suspend(false).await?;
+                Ok(1)
             }
             EffectorMessage::Rollback => {
                 loop {
@@ -82,7 +83,7 @@ impl Server<EffectorMessage, ()> for SleepEffectorActor {
                                 // The signal is sent as the computer is preparing to go to sleep (maybe?)
                                 // We want it to actually go to sleep, thus the wait.
                                 tokio::time::sleep(Duration::from_millis(1000)).await;
-                                return Ok(());
+                                return Ok(0);
                             } else {
                                 log::debug!("Dropping PrepareForSleep (start=true) signal");
                             }
@@ -90,7 +91,7 @@ impl Server<EffectorMessage, ()> for SleepEffectorActor {
                     }
                 }
             }
+            EffectorMessage::CurrentlyAppliedEffects => Ok(0),
         }
-        Ok(())
     }
 }
