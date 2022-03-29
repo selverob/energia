@@ -8,27 +8,20 @@ use crate::{
         display_server::{self as ds, DisplayServerController},
     },
 };
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use logind_zbus::manager::InhibitType;
 
-pub struct DisplayEffector;
+pub struct DPMSEffector;
 
 #[async_trait]
-impl Effector for DisplayEffector {
+impl Effector for DPMSEffector {
     fn get_effects(&self) -> Vec<Effect> {
-        vec![
-            Effect::new(
-                "screen_dim".to_owned(),
-                vec![InhibitType::Idle],
-                RollbackStrategy::OnActivity,
-            ),
-            Effect::new(
-                "screen_off".to_owned(),
-                vec![InhibitType::Idle],
-                RollbackStrategy::OnActivity,
-            ),
-        ]
+        vec![Effect::new(
+            "screen_off".to_owned(),
+            vec![InhibitType::Idle],
+            RollbackStrategy::OnActivity,
+        )]
     }
 
     async fn spawn<B: BrightnessController, D: ds::DisplayServer>(
@@ -36,49 +29,27 @@ impl Effector for DisplayEffector {
         _: Option<toml::Value>,
         provider: &mut DependencyProvider<B, D>,
     ) -> Result<EffectorPort> {
-        let actor = DisplayEffectorActor::new(
-            provider.get_brightness_controller(),
-            provider.get_display_controller(),
-        );
+        let actor = DPMSEffectorActor::new(provider.get_display_controller());
         spawn_server(actor).await
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum DisplayState {
-    On,
-    Dimmed,
-    Off,
-}
-
-pub struct DisplayEffectorActor<B: BrightnessController, D: ds::DisplayServerController> {
-    current_state: DisplayState,
-    brightness_controller: B,
+pub struct DPMSEffectorActor<D: ds::DisplayServerController> {
+    display_off: bool,
     ds_controller: D,
     original_configuration: ServerConfiguration,
-    original_brightness: Option<usize>,
 }
 
-impl<B: BrightnessController, D: ds::DisplayServerController> DisplayEffectorActor<B, D> {
-    pub fn new(brightness_controller: B, ds_controller: D) -> DisplayEffectorActor<B, D> {
-        DisplayEffectorActor {
-            current_state: DisplayState::On,
-            brightness_controller,
+impl<D: ds::DisplayServerController> DPMSEffectorActor<D> {
+    pub fn new(ds_controller: D) -> DPMSEffectorActor<D> {
+        DPMSEffectorActor {
+            display_off: false,
             ds_controller,
             original_configuration: ServerConfiguration {
                 level: Some(ds::DPMSLevel::On),
                 timeouts: ds::DPMSTimeouts::new(0, 0, 0),
             },
-            original_brightness: None,
         }
-    }
-
-    async fn dim_screen(&self) -> Result<usize> {
-        let current_brightness = self.brightness_controller.get_brightness().await?;
-        self.brightness_controller
-            .set_brightness(current_brightness / 2)
-            .await?;
-        Ok(current_brightness)
     }
 
     async fn set_dpms_level(&self, level: ds::DPMSLevel) -> Result<()> {
@@ -95,60 +66,34 @@ impl<B: BrightnessController, D: ds::DisplayServerController> DisplayEffectorAct
             log::error!("Couldn't prepare DPMS for display effector: {}", e);
         }
     }
-
-    fn currently_applied_effects(&self) -> usize {
-        match self.current_state {
-            DisplayState::Off => 2,
-            DisplayState::Dimmed => 1,
-            DisplayState::On => 0,
-        }
-    }
 }
 
 #[async_trait]
-impl<B: BrightnessController, D: ds::DisplayServerController> Server<EffectorMessage, usize>
-    for DisplayEffectorActor<B, D>
-{
+impl<D: ds::DisplayServerController> Server<EffectorMessage, usize> for DPMSEffectorActor<D> {
     fn get_name(&self) -> String {
-        "DisplayEffector".to_owned()
+        "DPMSEffector".to_owned()
     }
 
     async fn handle_message(&mut self, payload: EffectorMessage) -> Result<usize> {
-        match (self.current_state, payload) {
-            (DisplayState::On, EffectorMessage::Execute) => {
-                self.original_brightness = Some(self.dim_screen().await?);
-                self.current_state = DisplayState::Dimmed;
-            }
-            (DisplayState::On, EffectorMessage::Rollback) => {
-                return Err(anyhow!("Unmatched Rollback called on DisplayEffector"));
-            }
-            (DisplayState::Dimmed, EffectorMessage::Execute) => {
+        match payload {
+            EffectorMessage::Execute => {
                 self.set_dpms_level(ds::DPMSLevel::Off).await?;
-                self.current_state = DisplayState::Off;
+                self.display_off = true;
+                Ok(1)
             }
-            (DisplayState::Dimmed, EffectorMessage::Rollback) => {
-                if let Some(b) = self.original_brightness {
-                    self.brightness_controller.set_brightness(b).await?;
-                } else {
-                    return Err(anyhow!(
-                        "Brightness rollback called without previous dimming."
-                    ));
-                }
-                self.original_brightness = None;
-                self.current_state = DisplayState::On;
-            }
-            (DisplayState::Off, EffectorMessage::Execute) => {
-                return Err(anyhow!("Unmatched Execute called on DisplayEffector"));
-            }
-            (DisplayState::Off, EffectorMessage::Rollback) => {
+            EffectorMessage::Rollback => {
                 self.set_dpms_level(ds::DPMSLevel::On).await?;
-                self.current_state = DisplayState::Dimmed;
+                self.display_off = false;
+                Ok(0)
             }
-            (_, EffectorMessage::CurrentlyAppliedEffects) => {
-                // We return the number of applied effects at the end anyway
+            EffectorMessage::CurrentlyAppliedEffects => {
+                if self.display_off {
+                    Ok(1)
+                } else {
+                    Ok(0)
+                }
             }
         }
-        Ok(self.currently_applied_effects())
     }
 
     async fn initialize(&mut self) -> Result<()> {
@@ -161,9 +106,6 @@ impl<B: BrightnessController, D: ds::DisplayServerController> Server<EffectorMes
         self.original_configuration
             .apply(&self.ds_controller)
             .await?;
-        if let Some(b) = self.original_brightness {
-            self.brightness_controller.set_brightness(b).await?;
-        }
         Ok(())
     }
 }
