@@ -42,15 +42,7 @@ impl Effector for SessionEffector {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum SessionState {
-    Active,
-    IdleHinted,
-    LockedHinted,
-}
-
 pub struct SessionEffectorActor {
-    session_state: SessionState,
     connection: zbus::Connection,
     session_proxy: Option<SessionProxy<'static>>,
 }
@@ -58,7 +50,6 @@ pub struct SessionEffectorActor {
 impl SessionEffectorActor {
     pub fn new(connection: zbus::Connection) -> SessionEffectorActor {
         SessionEffectorActor {
-            session_state: SessionState::Active,
             connection,
             session_proxy: None,
         }
@@ -66,14 +57,6 @@ impl SessionEffectorActor {
 
     fn get_session_proxy(&self) -> &SessionProxy<'static> {
         self.session_proxy.as_ref().unwrap()
-    }
-
-    fn currently_applied_effects(&self) -> usize {
-        match self.session_state {
-            SessionState::Active => 0,
-            SessionState::IdleHinted => 1,
-            SessionState::LockedHinted => 2,
-        }
     }
 }
 
@@ -97,37 +80,24 @@ impl Server<EffectorMessage, usize> for SessionEffectorActor {
     }
 
     async fn handle_message(&mut self, payload: EffectorMessage) -> Result<usize> {
-        match (self.session_state, payload) {
-            (SessionState::Active, EffectorMessage::Execute) => {
+        match payload {
+            EffectorMessage::Execute => {
                 log::debug!("Setting idle hint to true");
                 self.get_session_proxy().set_idle_hint(true).await?;
-                self.session_state = SessionState::IdleHinted;
+                Ok(1)
             }
-            (SessionState::Active, EffectorMessage::Rollback) => {
-                return Err(anyhow!("Unmatched Rollback called on SessionEffector"));
-            }
-            (SessionState::IdleHinted, EffectorMessage::Execute) => {
-                log::debug!("Setting locked hint to true");
-                self.get_session_proxy().set_locked_hint(true).await?;
-                self.session_state = SessionState::LockedHinted;
-            }
-            (SessionState::IdleHinted, EffectorMessage::Rollback) => {
+            EffectorMessage::Rollback => {
                 log::debug!("Setting idle hint to false");
                 self.get_session_proxy().set_idle_hint(false).await?;
-                self.session_state = SessionState::Active;
+                Ok(0)
             }
-            (SessionState::LockedHinted, EffectorMessage::Execute) => {
-                return Err(anyhow!("Too many Execute messages sent to SessionEffector"));
-            }
-            (SessionState::LockedHinted, EffectorMessage::Rollback) => {
-                log::debug!("Setting locked hint to false");
-                self.get_session_proxy().set_locked_hint(false).await?;
-                self.session_state = SessionState::IdleHinted;
-            }
-            (_, EffectorMessage::CurrentlyAppliedEffects) => {
-                // We return the number of applied effects at the end anyway
+            EffectorMessage::CurrentlyAppliedEffects => {
+                if self.get_session_proxy().idle_hint().await? {
+                    Ok(1)
+                } else {
+                    Ok(0)
+                }
             }
         }
-        Ok(self.currently_applied_effects())
     }
 }

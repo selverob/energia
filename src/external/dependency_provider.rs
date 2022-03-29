@@ -77,9 +77,9 @@ impl DependencyProvider<LogindBrightnessController, X11Interface> {
 }
 
 impl DependencyProvider<MockBrightnessController, display_server::mock::Interface> {
-    pub fn make_mock() -> Self {
+    pub fn make_mock(dbus_factory: Option<dbus::ConnectionFactory>) -> Self {
         DependencyProvider::new(
-            None,
+            dbus_factory,
             MockBrightnessController::new(50),
             display_server::mock::Interface::new(60),
         )
@@ -94,7 +94,7 @@ mod test {
 
     #[tokio::test]
     async fn test_mock() {
-        let mut provider = DependencyProvider::make_mock();
+        let mut provider = DependencyProvider::make_mock(None);
         provider
             .get_dbus_session_connection()
             .await
