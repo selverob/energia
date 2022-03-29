@@ -7,6 +7,7 @@ use crate::{
 };
 
 #[tokio::test]
+#[cfg(not(tarpaulin))] // Cannot run Tarpaulin test with external commands, see https://github.com/xd009642/tarpaulin/issues/971
 async fn test_basic_flow() {
     let config = toml::toml! {
         command = "sleep"
