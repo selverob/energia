@@ -13,7 +13,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 pub fn get_known_effector_names() -> Vec<&'static str> {
-    vec!["display", "session", "sleep"]
+    vec!["display", "session", "sleep", "lock"]
 }
 
 pub fn get_effects_for_effector(effector_name: &str) -> Vec<Effect> {
@@ -21,6 +21,7 @@ pub fn get_effects_for_effector(effector_name: &str) -> Vec<Effect> {
         "display" => system::display_effector::DisplayEffector.get_effects(),
         "session" => system::session_effector::SessionEffector.get_effects(),
         "sleep" => system::sleep_effector::SleepEffector.get_effects(),
+        "lock" => system::lock_effector::LockEffector.get_effects(),
         _ => unreachable!(),
     }
 }
@@ -44,6 +45,11 @@ pub async fn spawn_effector<B: BrightnessController, D: DisplayServer>(
         }
         "sleep" => {
             system::sleep_effector::SleepEffector
+                .spawn(config_clone, dependency_provider)
+                .await
+        }
+        "lock" => {
+            system::lock_effector::LockEffector
                 .spawn(config_clone, dependency_provider)
                 .await
         }
