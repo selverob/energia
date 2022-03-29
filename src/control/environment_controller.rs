@@ -292,7 +292,11 @@ struct ReconciliationContext {
 
 impl ReconciliationContext {
     pub fn empty() -> ReconciliationContext {
-        Self::new(0, Duration::ZERO, ReconciliationBunches::new(None, None))
+        Self::new(
+            0,
+            Duration::ZERO,
+            ReconciliationBunches::new(None, None, HashSet::new()),
+        )
     }
 
     pub fn new(
@@ -329,12 +333,16 @@ impl ReconciliationContext {
             .iter()
             .flat_map(|bunch| &bunch.1)
             .collect();
-        let unexecuted_actions: Vec<&Action> = new_sequence[0..new_starting_bunch]
+        let missed_actions: Vec<&Action> = new_sequence[0..new_starting_bunch]
+            .iter()
+            .flat_map(|bunch| &bunch.1)
+            .collect();
+        let future_actions: Vec<&Action> = new_sequence[new_starting_bunch..new_sequence.len()]
             .iter()
             .flat_map(|bunch| &bunch.1)
             .collect();
         let reconciliation_bunches =
-            Self::reconciliation_bunches(executed_actions, unexecuted_actions);
+            Self::reconciliation_bunches(executed_actions, missed_actions, future_actions);
         Self::new(new_starting_bunch, sleep_shorten, reconciliation_bunches)
     }
 
@@ -353,15 +361,16 @@ impl ReconciliationContext {
 
     fn reconciliation_bunches(
         executed_actions: Vec<&Action>,
-        unexecuted_actions: Vec<&Action>,
+        missed_actions: Vec<&Action>,
+        future_actions: Vec<&Action>,
     ) -> ReconciliationBunches {
         let old_effect_names = Self::effect_names_from_actions(&executed_actions);
-        let new_effect_names = Self::effect_names_from_actions(&unexecuted_actions);
+        let new_effect_names = Self::effect_names_from_actions(&missed_actions);
         let old_set: HashSet<String> = HashSet::from_iter(old_effect_names);
         let new_set: HashSet<String> = HashSet::from_iter(new_effect_names);
 
         let effect_names_to_execute: HashSet<&String> = new_set.difference(&old_set).collect();
-        let actions_to_execute: Vec<Action> = unexecuted_actions
+        let actions_to_execute: Vec<Action> = missed_actions
             .iter()
             .filter_map(|action| {
                 if effect_names_to_execute.contains(&action.effect.name) {
@@ -392,7 +401,26 @@ impl ReconciliationContext {
             None
         };
 
-        ReconciliationBunches::new(execute, rollback)
+        ReconciliationBunches::new(
+            execute,
+            rollback,
+            Self::skip_effects(executed_actions, future_actions),
+        )
+    }
+
+    fn skip_effects(
+        executed_actions: Vec<&Action>,
+        future_actions: Vec<&Action>,
+    ) -> HashSet<String> {
+        let executed_set: HashSet<String> =
+            HashSet::from_iter(Self::effect_names_from_actions(&executed_actions));
+        let future_set: HashSet<String> =
+            HashSet::from_iter(Self::effect_names_from_actions(&future_actions));
+
+        executed_set
+            .intersection(&future_set)
+            .map(|s| s.to_string())
+            .collect()
     }
 
     fn effect_names_from_actions(actions: &Vec<&Action>) -> Vec<String> {
@@ -531,6 +559,7 @@ mod test {
         assert_eq!(context.starting_bunch, 0);
         assert!(context.reconciliation_bunches.execute.is_none());
         assert!(context.reconciliation_bunches.rollback.is_none());
+        assert_eq!(context.reconciliation_bunches.skip_effects.len(), 0);
     }
 
     #[test]
@@ -548,6 +577,7 @@ mod test {
         assert_eq!(context.starting_bunch, 1);
         assert!(context.reconciliation_bunches.execute.is_none());
         assert_eq!(context.reconciliation_bunches.rollback.unwrap().len(), 3);
+        assert_eq!(context.reconciliation_bunches.skip_effects.len(), 0);
     }
 
     #[test]
@@ -569,6 +599,10 @@ mod test {
             vec!["0-3", "0-4"]
         );
         assert_eq!(context.reconciliation_bunches.rollback.unwrap().len(), 6);
+        assert_eq!(
+            context.reconciliation_bunches.skip_effects,
+            HashSet::from(["1-0".to_owned(), "1-1".to_owned(), "1-2".to_owned()])
+        );
     }
 
     #[test]
@@ -589,5 +623,6 @@ mod test {
             vec!["0-3", "0-4"]
         );
         assert_eq!(context.reconciliation_bunches.rollback.unwrap().len(), 3);
+        assert_eq!(context.reconciliation_bunches.skip_effects.len(), 0);
     }
 }
