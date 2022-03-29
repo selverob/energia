@@ -1,5 +1,6 @@
 use std::{
     cell::Cell,
+    collections::HashSet,
     sync::{Arc, Mutex},
 };
 
@@ -133,7 +134,7 @@ async fn test_without_inhibitors() {
     let idleness_controller = IdlenessController::new(
         action_bunches,
         0,
-        ReconciliationBunches::new(None, None),
+        ReconciliationBunches::new(None, None, HashSet::new()),
         inhibition_sensor.spawn(),
     );
     let controller_port = spawn_server(idleness_controller).await.unwrap();
@@ -207,7 +208,7 @@ async fn test_inhibitions() {
     let idleness_controller = IdlenessController::new(
         action_bunches,
         0,
-        ReconciliationBunches::new(None, None),
+        ReconciliationBunches::new(None, None, HashSet::new()),
         inhibition_sensor.spawn(),
     );
     let controller_port = spawn_server(idleness_controller).await.unwrap();
@@ -315,6 +316,7 @@ async fn test_reconciliation() {
             make_action(1, 2, rec1.get_port(), RollbackStrategy::OnActivity),
         ]),
         Some(vec![rec2.get_port()]),
+        HashSet::new(),
     );
 
     rec2.get_port()
@@ -367,7 +369,8 @@ async fn test_rollback_on_zero_position() {
         RollbackStrategy::OnActivity,
     )]];
 
-    let reconciliation = ReconciliationBunches::new(None, Some(vec![rec1.get_port()]));
+    let reconciliation =
+        ReconciliationBunches::new(None, Some(vec![rec1.get_port()]), HashSet::new());
 
     rec1.get_port()
         .request(EffectorMessage::Execute)
@@ -381,4 +384,54 @@ async fn test_rollback_on_zero_position() {
     assert_eq!(ec1.ongoing_effect_count(), 0);
     assert_eq!(rec1.ongoing_effect_count(), 0);
     _controller_port.await_shutdown().await;
+}
+
+#[tokio::test]
+async fn test_effect_skipping() {
+    let ec1 = EffectsCounter::new();
+    let ec2 = EffectsCounter::new();
+
+    let action_bunches = vec![
+        vec![
+            make_action(1, 1, ec1.get_port(), RollbackStrategy::OnActivity),
+            make_action(1, 2, ec2.get_port(), RollbackStrategy::OnActivity),
+        ],
+        vec![
+            make_action(2, 1, ec1.get_port(), RollbackStrategy::OnActivity),
+            make_action(2, 2, ec2.get_port(), RollbackStrategy::OnActivity),
+        ],
+    ];
+
+    let inhibition_sensor = MockInhibitionSensor::new();
+    let skip_set = HashSet::from(["1-1".to_owned(), "2-2".to_owned()]);
+    let idleness_controller = IdlenessController::new(
+        action_bunches,
+        0,
+        ReconciliationBunches::new(None, None, skip_set),
+        inhibition_sensor.spawn(),
+    );
+    let controller_port = spawn_server(idleness_controller).await.unwrap();
+
+    controller_port.request(SystemState::Idle).await.unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(ec2.ongoing_effect_count(), 1);
+
+    controller_port.request(SystemState::Idle).await.unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 1);
+    assert_eq!(ec2.ongoing_effect_count(), 1);
+
+    controller_port
+        .request(SystemState::Awakened)
+        .await
+        .unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 0);
+    assert_eq!(ec2.ongoing_effect_count(), 0);
+
+    controller_port.request(SystemState::Idle).await.unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 1);
+    assert_eq!(ec2.ongoing_effect_count(), 1);
+
+    controller_port.request(SystemState::Idle).await.unwrap();
+    assert_eq!(ec1.ongoing_effect_count(), 2);
+    assert_eq!(ec2.ongoing_effect_count(), 2);
 }

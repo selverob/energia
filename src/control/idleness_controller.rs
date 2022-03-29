@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{
     armaf::{ActorPort, Effect, EffectorMessage, EffectorPort, RollbackStrategy, Server},
     external::display_server::SystemState,
@@ -32,14 +34,20 @@ impl Action {
 pub struct ReconciliationBunches {
     pub execute: Option<Vec<Action>>,
     pub rollback: Option<Vec<EffectorPort>>,
+    pub skip_effects: HashSet<String>,
 }
 
 impl ReconciliationBunches {
     pub fn new(
         execute: Option<Vec<Action>>,
         rollback: Option<Vec<EffectorPort>>,
+        skip_effects: HashSet<String>,
     ) -> ReconciliationBunches {
-        ReconciliationBunches { execute, rollback }
+        ReconciliationBunches {
+            execute,
+            rollback,
+            skip_effects,
+        }
     }
 }
 
@@ -88,6 +96,14 @@ impl IdlenessController {
         let mut immediate_rollback_ports: Vec<EffectorPort> = Vec::new();
 
         for action in action_iter {
+            if self
+                .reconciliation_bunches
+                .skip_effects
+                .contains(&action.effect.name)
+            {
+                log::debug!("Skipping {} until the next rollback", action.effect.name);
+                continue;
+            }
             log::debug!("Applying effect {}", action.effect.name);
             if let Err(e) = action.recipient.request(EffectorMessage::Execute).await {
                 log::error!("Failed to apply effect {}: {:?}", action.effect.name, e);
@@ -161,6 +177,7 @@ impl IdlenessController {
 
     async fn handle_wakeup(&mut self) -> Result<()> {
         log::info!("System awakened, rolling back all effects");
+        self.reconciliation_bunches.skip_effects.clear();
         if let Some(mut reconciliation) = self.reconciliation_bunches.rollback.take() {
             rollback_all(&mut reconciliation).await;
         }
