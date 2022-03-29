@@ -98,6 +98,7 @@ impl IdlenessController {
                 RollbackStrategy::Immediate => {
                     immediate_rollback_ports.push(action.recipient.clone())
                 }
+                RollbackStrategy::None => {}
             }
         }
 
