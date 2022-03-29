@@ -7,7 +7,7 @@ use crate::{
         display_server as ds,
     },
 };
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use log;
 use logind_zbus::{self, manager::InhibitType, session::SessionProxy};
