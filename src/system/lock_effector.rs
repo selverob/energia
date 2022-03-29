@@ -24,7 +24,7 @@ impl Effector for LockEffector {
         vec![Effect::new(
             "lock".to_owned(),
             vec![InhibitType::Idle],
-            RollbackStrategy::OnActivity,
+            RollbackStrategy::None,
         )]
     }
 
