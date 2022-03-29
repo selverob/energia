@@ -50,6 +50,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
     }
 
     pub async fn spawn(mut self) -> Result<Handle> {
+        self.spawn_effector_by_name("session").await?;
         let schedules = Self::parse_schedules(&self.config)?;
         if schedules.len() == 0 {
             return Err(anyhow!(
@@ -208,6 +209,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
             ))
         }
         action_bunches.sort_by_key(|bunch| bunch.0);
+        action_bunches[0].1.push(self.idle_hint_action());
         Ok(action_bunches)
     }
 
@@ -229,6 +231,13 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
             ));
         }
         Ok(actions)
+    }
+
+    fn idle_hint_action(&self) -> Action {
+        Action::new(
+            ei::get_effects_for_effector("session")[0].clone(),
+            self.spawned_effectors["session"].clone(),
+        )
     }
 
     async fn spawn_effector_by_name(&mut self, effector_name: &str) -> Result<()> {
