@@ -22,7 +22,7 @@ pub type EffectorPort = ActorPort<EffectorMessage, usize, anyhow::Error>;
 pub enum RollbackStrategy {
     OnActivity,
     Immediate,
-    None
+    None,
 }
 
 #[derive(Debug, Clone)]
