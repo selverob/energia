@@ -13,7 +13,23 @@ async fn test_basic_flow() {
         command = "sleep"
         args = ["5"]
     };
-    let mut di = DependencyProvider::make_mock();
+
+    let mut di =
+        DependencyProvider::make_mock(Some(crate::external::dbus::ConnectionFactory::new()));
+    let connection = di.get_dbus_system_connection().await.unwrap();
+    let manager_proxy = logind_zbus::manager::ManagerProxy::new(&connection)
+        .await
+        .unwrap();
+    let path = manager_proxy
+        .get_session_by_PID(std::process::id())
+        .await
+        .unwrap();
+    let session_proxy = logind_zbus::session::SessionProxy::builder(&connection)
+        .path(path)
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
     let port = LockEffector.spawn(Some(config), &mut di).await.unwrap();
     assert_eq!(
         port.request(EffectorMessage::CurrentlyAppliedEffects)
@@ -28,6 +44,7 @@ async fn test_basic_flow() {
         1
     );
     let start = Instant::now();
+    assert!(session_proxy.locked_hint().await.unwrap());
     assert_eq!(
         port.request(EffectorMessage::CurrentlyAppliedEffects)
             .await
@@ -44,10 +61,11 @@ async fn test_basic_flow() {
         0
     );
     assert!(start.elapsed() > std::time::Duration::from_secs(5));
+    assert!(!session_proxy.locked_hint().await.unwrap());
 }
 
 #[tokio::test]
 async fn test_error_without_config() {
-    let mut di = DependencyProvider::make_mock();
+    let mut di = DependencyProvider::make_mock(None);
     assert!(LockEffector.spawn(None, &mut di).await.is_err());
 }
