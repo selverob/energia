@@ -127,7 +127,8 @@ behavior:
     * Provided effects:
         * `screen_dim` - dim the screen to 50% of its current brightness.
     * Configuration:
-        * N/A
+        * `dim_percentage` (integer, default: 50) - the percentage to which the brightness should be
+          reduced relative to the current brightness.
 * **dpms** effector
     * Provided effects:
         * `screen_off` - turn all the screens connected to the computer off.
@@ -138,8 +139,8 @@ behavior:
         * `lock` - start a screen locking application and set `LockedHint` on
           user's `logind` session to `true`. Never rolled back automatically.
     * Configuration:
-        * `command` (string) - the path to the locker to execute.
-        * `args` (list of strings) - arguments to be passed to the locker
+        * `command` (string, required) - the path to the locker to execute.
+        * `args` (list of strings, required) - arguments to be passed to the locker.
 * **sleep** effector
     * Provided effects:
         * `sleep` - put the computer to sleep as if by calling `systemd suspend`
