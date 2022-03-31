@@ -135,8 +135,8 @@ behavior:
         * N/A
 * **lock** effector
     * Provided effects:
-        * `lock` - start a screen locking application. Never rolled back
-          automatically.
+        * `lock` - start a screen locking application and set `LockedHint` on
+          user's `logind` session to `true`. Never rolled back automatically.
     * Configuration:
         * `command` (string) - the path to the locker to execute.
         * `args` (list of strings) - arguments to be passed to the locker
@@ -144,5 +144,13 @@ behavior:
     * Provided effects:
         * `sleep` - put the computer to sleep as if by calling `systemd suspend`
           on the command line.
+    * Configuration:
+        * N/A
+* **session** effector
+    * Provided effects:
+        * `idle_hint` - set the `IdleHint` property on user's `logind` session
+          to `true`. This effect is only mentioned for completeness. Energia
+          automatically executes it with the first real effect specified in the
+          schedule.
     * Configuration:
         * N/A
