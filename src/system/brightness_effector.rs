@@ -7,9 +7,10 @@ use crate::{
         display_server as ds,
     },
 };
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use logind_zbus::manager::InhibitType;
+use serde::de::Deserialize;
 
 pub struct BrightnessEffector;
 
@@ -25,22 +26,36 @@ impl Effector for BrightnessEffector {
 
     async fn spawn<B: BrightnessController, D: ds::DisplayServer>(
         &self,
-        _: Option<toml::Value>,
+        config: Option<toml::Value>,
         provider: &mut DependencyProvider<B, D>,
     ) -> Result<EffectorPort> {
-        let actor = BrightnessEffectorActor::new(provider.get_brightness_controller());
+        let dim_fraction = if let Some(some_config) = config {
+            if let Some(toml::value::Value::Integer(dim_percentage)) =
+                some_config.get("dim_percentage")
+            {
+                *dim_percentage as f64 / 100f64
+            } else {
+                bail!("Couldn't find dim_percentage in brightness config or it's not an integer");
+            }
+        } else {
+            0.5
+        };
+        let actor =
+            BrightnessEffectorActor::new(provider.get_brightness_controller(), dim_fraction);
         spawn_server(actor).await
     }
 }
 
 pub struct BrightnessEffectorActor<B: BrightnessController> {
+    dim_fraction: f64,
     brightness_controller: B,
     original_brightness: Option<usize>,
 }
 
 impl<B: BrightnessController> BrightnessEffectorActor<B> {
-    pub fn new(brightness_controller: B) -> BrightnessEffectorActor<B> {
+    pub fn new(brightness_controller: B, dim_fraction: f64) -> BrightnessEffectorActor<B> {
         BrightnessEffectorActor {
+            dim_fraction,
             brightness_controller,
             original_brightness: None,
         }
@@ -49,7 +64,7 @@ impl<B: BrightnessController> BrightnessEffectorActor<B> {
     async fn dim_screen(&self) -> Result<usize> {
         let current_brightness = self.brightness_controller.get_brightness().await?;
         self.brightness_controller
-            .set_brightness(current_brightness / 2)
+            .set_brightness((current_brightness as f64 * self.dim_fraction) as usize)
             .await?;
         Ok(current_brightness)
     }
