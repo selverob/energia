@@ -20,8 +20,8 @@ async fn main() {
     if env::var("RUST_LOG").is_err() {
         env::set_var("RUST_LOG", "debug");
     }
-    let config_path = env::var("ENERGIA_CONFIG_PATH").unwrap_or("config.toml".to_owned());
     env_logger::init();
+    let config_path = env::var("ENERGIA_CONFIG_PATH").unwrap_or("config.toml".to_owned());
     let config_bytes = fs::read(config_path)
         .await
         .expect("Couldn't read config file");
