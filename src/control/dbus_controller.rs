@@ -1,27 +1,43 @@
 use crate::armaf::{EffectorMessage, EffectorPort, Handle};
 
+#[derive(Debug, Clone, Copy)]
+pub enum BusType {
+    Session,
+    System,
+}
+
 pub struct DBusController {
-    path: Option<String>,
+    path: String,
+    name: String,
+    bus_type: BusType,
     lock_effector: EffectorPort,
 }
 
 impl DBusController {
-    pub fn new(path: Option<&str>, lock_effector: EffectorPort) -> DBusController {
+    pub fn new(
+        path: &str,
+        name: &str,
+        bus_type: BusType,
+        lock_effector: EffectorPort,
+    ) -> DBusController {
         DBusController {
-            path: path.map(|s| s.to_owned()),
+            path: path.to_string(),
+            name: name.to_string(),
+            bus_type,
             lock_effector,
         }
     }
 
     pub async fn spawn(self) -> anyhow::Result<Handle> {
         let (handle, mut handle_child) = Handle::new();
-        let path = self
-            .path
-            .clone()
-            .unwrap_or("/org/energia/Manager".to_string());
-        let connection = zbus::ConnectionBuilder::session()?
-            .name("org.energia.Manager")?
-            .serve_at(path.as_str(), self)?
+        let builder = match self.bus_type {
+            BusType::System => zbus::ConnectionBuilder::system()?,
+            BusType::Session => zbus::ConnectionBuilder::session()?,
+        };
+        let moved_path = self.path.clone();
+        let connection = builder
+            .name(self.name.clone().as_str())?
+            .serve_at(moved_path.as_str(), self)?
             .build()
             .await?;
 
@@ -31,7 +47,7 @@ impl DBusController {
             handle_child.should_terminate().await;
             if let Err(e) = moved_connection
                 .object_server()
-                .remove::<Self, String>(path)
+                .remove::<Self, String>(moved_path)
                 .await
             {
                 log::error!("Failed to unregister server: {}", e);

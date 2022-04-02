@@ -1,13 +1,17 @@
 use crate::{
     armaf::ActorPort,
-    control::{dbus_controller::DBusController, test::effects_counter::EffectsCounter},
+    control::{
+        dbus_controller::{BusType, DBusController},
+        test::effects_counter::EffectsCounter,
+    },
 };
 
 #[tokio::test]
 async fn test_locking() {
     let path = "/org/energia/test_dbus_locking";
+    let name = "org.energia.lock_test.Manager";
     let ec = EffectsCounter::new();
-    let dbus_controller = DBusController::new(Some(path), ec.get_port());
+    let dbus_controller = DBusController::new(path, name, get_bus_type(), ec.get_port());
     let handle = dbus_controller
         .spawn()
         .await
@@ -15,13 +19,7 @@ async fn test_locking() {
 
     let our_connection = zbus::Connection::session().await.unwrap();
     let result = our_connection
-        .call_method(
-            Some("org.energia.Manager"),
-            path,
-            Some("org.energia.Manager"),
-            "Lock",
-            &(),
-        )
+        .call_method(Some(name), path, Some("org.energia.Manager"), "Lock", &())
         .await;
     assert!(result.is_ok());
     assert_eq!(ec.ongoing_effect_count(), 1);
@@ -47,8 +45,9 @@ async fn test_locking() {
 #[tokio::test]
 async fn test_errors() {
     let path = "/org/energia/test_dbus_errors";
+    let name = "org.energia.errors_test.Manager";
     let (port, _) = ActorPort::make();
-    let dbus_controller = DBusController::new(Some(path), port);
+    let dbus_controller = DBusController::new(path, name, get_bus_type(), port);
     let handle = dbus_controller
         .spawn()
         .await
@@ -56,14 +55,18 @@ async fn test_errors() {
 
     let our_connection = zbus::Connection::session().await.unwrap();
     let result = our_connection
-        .call_method(
-            Some("org.energia.Manager"),
-            path,
-            Some("org.energia.Manager"),
-            "Lock",
-            &(),
-        )
+        .call_method(Some(name), path, Some("org.energia.Manager"), "Lock", &())
         .await;
     assert!(result.is_err());
     handle.await_shutdown().await;
+}
+
+fn get_bus_type() -> BusType {
+    // GitLab CI only has system bus while on local, we want to use session bus
+    // to not need root privileges
+    if std::env::var("CI").is_err() {
+        BusType::Session
+    } else {
+        BusType::System
+    }
 }
