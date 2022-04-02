@@ -7,7 +7,8 @@ mod control;
 mod external;
 mod system;
 
-use control::environment_controller::EnvironmentController;
+use armaf::{EffectorPort, Handle};
+use control::{dbus_controller::DBusController, environment_controller::EnvironmentController};
 use env_logger;
 use external::dependency_provider::DependencyProvider;
 use std::env;
@@ -15,7 +16,7 @@ use tokio::{self, fs};
 
 use crate::{
     armaf::spawn_server,
-    control::effector_inventory::EffectorInventory,
+    control::effector_inventory::{EffectorInventory, GetEffectorPort},
     external::display_server::x11::X11Interface,
     system::{
         inhibition_sensor::InhibitionSensor, sleep_sensor::SleepSensor, upower_sensor::UPowerSensor,
@@ -32,6 +33,18 @@ fn initialize_logging() {
 async fn parse_config() -> anyhow::Result<toml::Value> {
     let config_path = env::var("ENERGIA_CONFIG_PATH").unwrap_or("config.toml".to_owned());
     Ok(toml::from_slice(&fs::read(config_path).await?)?)
+}
+
+async fn try_launch_dbus_controller(lock_effector: EffectorPort) -> Option<Handle> {
+    let controller =
+        DBusController::new("/org/energia/Manager", "org.energia.Manager", lock_effector);
+    match controller.spawn().await {
+        Ok(handle) => Some(handle),
+        Err(e) => {
+            log::error!("Couldn't spawn D-Bus API: {}", e);
+            None
+        }
+    }
 }
 
 #[tokio::main]
@@ -85,7 +98,18 @@ async fn main() {
         .await
         .expect("Couldn't spawn environment controller");
 
+    let dbus_controller_handle = match effector_inventory
+        .request(GetEffectorPort("lock".to_string()))
+        .await
+    {
+        Ok(port) => try_launch_dbus_controller(port).await,
+        Err(_) => None,
+    };
+
     tokio::signal::ctrl_c().await.expect("Signal wait failed");
+    if let Some(h) = dbus_controller_handle {
+        h.await_shutdown().await;
+    }
     environment_controller_handle.await_shutdown().await;
     sleep_sensor_handle.await_shutdown().await;
     effector_inventory.await_shutdown().await;

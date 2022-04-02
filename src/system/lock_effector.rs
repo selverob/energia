@@ -103,6 +103,7 @@ impl LockEffectorActor {
                         log::error!("Failed to set locked hint on the session: {}", e);
                     }
                     let res = process.wait().await;
+                    log::debug!("Locker has quit");
                     if let Err(e) = sent_proxy.set_locked_hint(false).await {
                         log::error!("Failed to unset locked hint on the session: {}", e);
                     }
