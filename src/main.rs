@@ -16,8 +16,10 @@ use tokio::{self, fs};
 
 use crate::{
     armaf::spawn_server,
-    control::effector_inventory::{EffectorInventory, GetEffectorPort},
-    external::display_server::x11::X11Interface,
+    control::{
+        effector_inventory::{EffectorInventory, GetEffectorPort},
+        sleep_controller::SleepController,
+    },
     system::{
         inhibition_sensor::InhibitionSensor, sleep_sensor::SleepSensor, upower_sensor::UPowerSensor,
     },
@@ -84,11 +86,11 @@ async fn main() {
             .await
             .expect("Couldn't spawn EffectorInventory");
 
-    let environment_controller: EnvironmentController<X11Interface> = EnvironmentController::new(
+    let environment_controller = EnvironmentController::new(
         &config,
         effector_inventory.clone(),
         inhibition_sensor,
-        ds_controller,
+        ds_controller.clone(),
         idleness_channel,
         upower_channel,
     );
@@ -98,19 +100,32 @@ async fn main() {
         .await
         .expect("Couldn't spawn environment controller");
 
-    let dbus_controller_handle = match effector_inventory
+    let lock_effector = effector_inventory
         .request(GetEffectorPort("lock".to_string()))
         .await
-    {
-        Ok(port) => try_launch_dbus_controller(port).await,
-        Err(_) => None,
+        .map(|p| Some(p))
+        .unwrap_or(None);
+
+    let dbus_controller_handle = if let Some(ref port) = lock_effector {
+        try_launch_dbus_controller(port.clone()).await
+    } else {
+        None
     };
+
+    let sleep_controller_handle = SleepController::new(
+        sleep_sensor_channel.subscribe(),
+        lock_effector,
+        ds_controller,
+    )
+    .spawn()
+    .await;
 
     tokio::signal::ctrl_c().await.expect("Signal wait failed");
     if let Some(h) = dbus_controller_handle {
         h.await_shutdown().await;
     }
     environment_controller_handle.await_shutdown().await;
+    sleep_controller_handle.await_shutdown().await;
     sleep_sensor_handle.await_shutdown().await;
     effector_inventory.await_shutdown().await;
 

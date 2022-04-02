@@ -8,7 +8,7 @@ use crate::{
         idleness_controller::ReconciliationBunches,
         sequencer::{GetRunningTime, Sequencer},
     },
-    external::display_server::{DisplayServer, SystemState},
+    external::display_server::{DisplayServerController, SystemState},
     system::{inhibition_sensor::GetInhibitions, upower_sensor::PowerSource},
 };
 use anyhow::{anyhow, Context, Result};
@@ -22,23 +22,23 @@ use tokio::sync::watch;
 type Schedule = HashMap<String, Duration>;
 type Sequence = Vec<(Duration, Vec<Action>)>;
 
-pub struct EnvironmentController<D: DisplayServer> {
+pub struct EnvironmentController<D: DisplayServerController> {
     config: toml::Value,
     sequences: HashMap<PowerSource, Sequence>,
     effector_inventory: ActorPort<GetEffectorPort, EffectorPort, anyhow::Error>,
     inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
-    ds_controller: D::Controller,
+    ds_controller: D,
     idleness_channel: watch::Receiver<SystemState>,
     handle_child: Option<HandleChild>,
     power_source_receiver: watch::Receiver<PowerSource>,
 }
 
-impl<D: DisplayServer> EnvironmentController<D> {
+impl<D: DisplayServerController> EnvironmentController<D> {
     pub fn new(
         config: &toml::Value,
         effector_inventory: ActorPort<GetEffectorPort, EffectorPort, anyhow::Error>,
         inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
-        ds_controller: D::Controller,
+        ds_controller: D,
         idleness_channel: watch::Receiver<SystemState>,
         power_source_receiver: watch::Receiver<PowerSource>,
     ) -> EnvironmentController<D> {
