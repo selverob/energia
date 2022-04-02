@@ -7,11 +7,7 @@ pub struct DBusController {
 }
 
 impl DBusController {
-    pub fn new(
-        path: &str,
-        name: &str,
-        lock_effector: EffectorPort,
-    ) -> DBusController {
+    pub fn new(path: &str, name: &str, lock_effector: EffectorPort) -> DBusController {
         DBusController {
             path: path.to_string(),
             name: name.to_string(),

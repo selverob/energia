@@ -1,9 +1,6 @@
 use crate::{
     armaf::ActorPort,
-    control::{
-        dbus_controller::DBusController,
-        test::effects_counter::EffectsCounter,
-    },
+    control::{dbus_controller::DBusController, test::effects_counter::EffectsCounter},
 };
 
 #[tokio::test]
