@@ -34,7 +34,7 @@ impl Into<SystemState> for State {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct X11Interface {
     event_receiver: watch::Receiver<SystemState>,
     command_connection: Arc<RustConnection>,

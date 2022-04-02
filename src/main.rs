@@ -16,60 +16,67 @@ use tokio::{self, fs};
 use crate::{
     armaf::spawn_server,
     control::effector_inventory::EffectorInventory,
+    external::display_server::x11::X11Interface,
     system::{
-        sleep_sensor::{self, SleepSensor},
-        upower_sensor::UPowerSensor,
+        inhibition_sensor::InhibitionSensor, sleep_sensor::SleepSensor, upower_sensor::UPowerSensor,
     },
 };
 
-#[tokio::main]
-async fn main() {
+fn initialize_logging() {
     if env::var("RUST_LOG").is_err() {
         env::set_var("RUST_LOG", "debug");
     }
     env_logger::init();
+}
 
+async fn parse_config() -> anyhow::Result<toml::Value> {
     let config_path = env::var("ENERGIA_CONFIG_PATH").unwrap_or("config.toml".to_owned());
-    let config_bytes = fs::read(config_path)
-        .await
-        .expect("Couldn't read config file");
-    let config: toml::Value = toml::from_slice(&config_bytes).expect("Config parsing failuer");
+    Ok(toml::from_slice(&fs::read(config_path).await?)?)
+}
+
+#[tokio::main]
+async fn main() {
+    initialize_logging();
+
+    let config = parse_config().await.expect("Couldn't read configuration");
     log::info!("Parsed config is: {:?}", config);
 
     let mut system_dependencies = DependencyProvider::make_system()
         .await
         .expect("Couldn't construct dependency provider");
 
-    let upower_channel = UPowerSensor::new(
-        system_dependencies
-            .get_dbus_system_connection()
-            .await
-            .expect("Couldn't get connection to system DBus"),
-    )
-    .await
-    .expect("Couldn't start UPower sensor");
-
-    let effector_inventory = spawn_server(EffectorInventory::new(
-        config.clone(),
-        system_dependencies.clone(),
-    ))
-    .await
-    .expect("Couldn't spawn EffectorInventory");
-
-    let system_dbus_connection = system_dependencies
+    let ds_controller = system_dependencies.get_display_controller();
+    let idleness_channel = system_dependencies.get_idleness_channel();
+    let dbus_connection = system_dependencies
         .get_dbus_system_connection()
         .await
-        .expect("Couldn't connect to system D-Bus");
-    let sleep_sensor = SleepSensor::new(system_dbus_connection);
+        .expect("Couldn't get connection to system D-Bus");
+
+    let inhibition_sensor = spawn_server(InhibitionSensor::new(dbus_connection.clone()))
+        .await
+        .expect("Couldn't start inhibition sensor");
+
+    let upower_channel = UPowerSensor::new(dbus_connection.clone())
+        .await
+        .expect("Couldn't start UPower sensor");
+
+    let sleep_sensor = SleepSensor::new(dbus_connection);
     let (sleep_sensor_handle, sleep_sensor_channel) = sleep_sensor
         .spawn()
         .await
         .expect("Sleep sensor failed to start");
 
-    let environment_controller = EnvironmentController::new(
+    let effector_inventory =
+        spawn_server(EffectorInventory::new(config.clone(), system_dependencies))
+            .await
+            .expect("Couldn't spawn EffectorInventory");
+
+    let environment_controller: EnvironmentController<X11Interface> = EnvironmentController::new(
         &config,
         effector_inventory.clone(),
-        system_dependencies,
+        inhibition_sensor,
+        ds_controller,
+        idleness_channel,
         upower_channel,
     );
 
@@ -77,9 +84,11 @@ async fn main() {
         .spawn()
         .await
         .expect("Couldn't spawn environment controller");
+
     tokio::signal::ctrl_c().await.expect("Signal wait failed");
     environment_controller_handle.await_shutdown().await;
     sleep_sensor_handle.await_shutdown().await;
     effector_inventory.await_shutdown().await;
+
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 }

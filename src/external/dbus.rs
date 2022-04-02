@@ -4,7 +4,6 @@ use zbus;
 /// Handles initialization and cloning of [zbus::Connection]s. These are
 /// clone-able and handle their own refcounts internally. This struct will
 /// either create or provide clones of connections.
-#[derive(Clone)]
 pub struct ConnectionFactory {
     system: Option<zbus::Connection>,
     session: Option<zbus::Connection>,

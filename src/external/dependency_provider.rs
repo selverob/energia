@@ -8,7 +8,6 @@ use super::{
 use anyhow::{anyhow, Result};
 use tokio::sync::watch;
 
-#[derive(Clone)]
 pub struct DependencyProvider<B: BrightnessController, D: DisplayServer> {
     dbus_factory: Option<dbus::ConnectionFactory>,
     display_server: D,

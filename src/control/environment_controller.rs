@@ -8,13 +8,11 @@ use crate::{
         idleness_controller::ReconciliationBunches,
         sequencer::{GetRunningTime, Sequencer},
     },
-    external::{
-        brightness::BrightnessController, dependency_provider::DependencyProvider,
-        display_server::DisplayServer,
-    },
-    system::{inhibition_sensor::InhibitionSensor, upower_sensor::PowerSource},
+    external::display_server::{DisplayServer, SystemState},
+    system::{inhibition_sensor::GetInhibitions, upower_sensor::PowerSource},
 };
 use anyhow::{anyhow, Context, Result};
+use logind_zbus::manager::Inhibitor;
 use std::{
     collections::{HashMap, HashSet},
     time::Duration,
@@ -24,27 +22,33 @@ use tokio::sync::watch;
 type Schedule = HashMap<String, Duration>;
 type Sequence = Vec<(Duration, Vec<Action>)>;
 
-pub struct EnvironmentController<B: BrightnessController, D: DisplayServer> {
+pub struct EnvironmentController<D: DisplayServer> {
     config: toml::Value,
     sequences: HashMap<PowerSource, Sequence>,
     effector_inventory: ActorPort<GetEffectorPort, EffectorPort, anyhow::Error>,
-    dependency_provider: DependencyProvider<B, D>,
+    inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
+    ds_controller: D::Controller,
+    idleness_channel: watch::Receiver<SystemState>,
     handle_child: Option<HandleChild>,
     power_source_receiver: watch::Receiver<PowerSource>,
 }
 
-impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
+impl<D: DisplayServer> EnvironmentController<D> {
     pub fn new(
         config: &toml::Value,
         effector_inventory: ActorPort<GetEffectorPort, EffectorPort, anyhow::Error>,
-        dependency_provider: DependencyProvider<B, D>,
+        inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
+        ds_controller: D::Controller,
+        idleness_channel: watch::Receiver<SystemState>,
         power_source_receiver: watch::Receiver<PowerSource>,
-    ) -> EnvironmentController<B, D> {
+    ) -> EnvironmentController<D> {
         EnvironmentController {
             config: config.clone(),
             sequences: HashMap::new(),
             effector_inventory,
-            dependency_provider,
+            inhibition_sensor,
+            ds_controller,
+            idleness_channel,
             handle_child: None,
             power_source_receiver,
         }
@@ -83,12 +87,6 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
     }
 
     async fn main_loop(&mut self) -> Result<()> {
-        let inhibition_sensor = spawn_server(InhibitionSensor::new(
-            self.dependency_provider
-                .get_dbus_system_connection()
-                .await?,
-        ))
-        .await?;
         let power_source = *self.power_source_receiver.borrow_and_update();
         log::info!("New power source is {:?}", power_source);
         let mut sequence = self.sequence_for_power_source(power_source);
@@ -100,12 +98,12 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
                 actions,
                 reconciliation_context.starting_bunch,
                 reconciliation_context.reconciliation_bunches,
-                inhibition_sensor.clone(),
+                self.inhibition_sensor.clone(),
             );
             let sequencer = Sequencer::new(
                 spawn_server(idleness_controller).await?,
-                self.dependency_provider.get_display_controller(),
-                self.dependency_provider.get_idleness_channel(),
+                self.ds_controller.clone(),
+                self.idleness_channel.clone(),
                 &durations_to_timeouts(&durations),
                 reconciliation_context.starting_bunch,
                 reconciliation_context.initial_sleep_shorten,

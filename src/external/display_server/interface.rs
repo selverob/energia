@@ -47,7 +47,7 @@ impl DPMSTimeouts {
 
 /// The interface between Energia and the user's display server for the purposes
 /// of detecting and controlling system's idleness behavior and display settings.
-pub trait DisplayServer: Send + Clone + 'static {
+pub trait DisplayServer: Send + 'static {
     type Controller: DisplayServerController;
 
     /// Get a [Receiver] on which notification about system idleness state changes can be received.
