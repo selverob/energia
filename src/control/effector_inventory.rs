@@ -1,5 +1,5 @@
 use crate::{
-    armaf::{Effect, Effector, EffectorPort},
+    armaf::{Effect, Effector, EffectorPort, Server},
     external::{
         brightness::BrightnessController, dependency_provider::DependencyProvider,
         display_server::DisplayServer,
@@ -24,6 +24,55 @@ pub fn get_effects_for_effector(effector_name: &str) -> Vec<Effect> {
         "sleep" => system::sleep_effector::SleepEffector.get_effects(),
         "lock" => system::lock_effector::LockEffector.get_effects(),
         _ => unreachable!(),
+    }
+}
+
+pub struct GetEffectorPort(pub String);
+
+pub struct EffectorInventory<B: BrightnessController, D: DisplayServer> {
+    config: toml::Value,
+    running_effectors: HashMap<String, EffectorPort>,
+    dependency_provider: DependencyProvider<B, D>,
+}
+
+impl<B: BrightnessController, D: DisplayServer> EffectorInventory<B, D> {
+    pub fn new(
+        config: toml::Value,
+        dependency_provider: DependencyProvider<B, D>,
+    ) -> EffectorInventory<B, D> {
+        EffectorInventory {
+            config,
+            running_effectors: HashMap::new(),
+            dependency_provider,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<B: BrightnessController, D: DisplayServer> Server<GetEffectorPort, EffectorPort>
+    for EffectorInventory<B, D>
+{
+    fn get_name(&self) -> String {
+        "EffectorInventory".to_string()
+    }
+
+    async fn handle_message(&mut self, payload: GetEffectorPort) -> Result<EffectorPort> {
+        let GetEffectorPort(ref effector_name) = payload;
+        if self.running_effectors.contains_key(effector_name) {
+            return Ok(self.running_effectors[effector_name].clone());
+        }
+        let config = self.config.get(effector_name);
+        let port = spawn_effector(effector_name, &mut self.dependency_provider, config).await?;
+        self.running_effectors.insert(payload.0, port.clone());
+        Ok(port)
+    }
+
+    async fn tear_down(&mut self) -> Result<()> {
+        for (effector, port) in self.running_effectors.drain() {
+            log::info!("Terminating {}", effector);
+            port.await_shutdown().await;
+        }
+        Ok(())
     }
 }
 
@@ -59,7 +108,7 @@ pub async fn spawn_effector<B: BrightnessController, D: DisplayServer>(
                 .spawn(config_clone, dependency_provider)
                 .await
         }
-        _ => unreachable!(),
+        _ => Err(anyhow::anyhow!("unknown effector")),
     }
 }
 

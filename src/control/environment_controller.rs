@@ -1,9 +1,9 @@
 use super::{
-    effector_inventory as ei,
+    effector_inventory::{self as ei, GetEffectorPort},
     idleness_controller::{Action, IdlenessController},
 };
 use crate::{
-    armaf::{spawn_server, Effect, EffectorPort, Handle, HandleChild},
+    armaf::{spawn_server, ActorPort, Effect, EffectorPort, Handle, HandleChild},
     control::{
         idleness_controller::ReconciliationBunches,
         sequencer::{GetRunningTime, Sequencer},
@@ -27,7 +27,7 @@ type Sequence = Vec<(Duration, Vec<Action>)>;
 pub struct EnvironmentController<B: BrightnessController, D: DisplayServer> {
     config: toml::Value,
     sequences: HashMap<PowerSource, Sequence>,
-    spawned_effectors: HashMap<String, EffectorPort>,
+    effector_inventory: ActorPort<GetEffectorPort, EffectorPort, anyhow::Error>,
     dependency_provider: DependencyProvider<B, D>,
     handle_child: Option<HandleChild>,
     power_source_receiver: watch::Receiver<PowerSource>,
@@ -36,13 +36,14 @@ pub struct EnvironmentController<B: BrightnessController, D: DisplayServer> {
 impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
     pub fn new(
         config: &toml::Value,
+        effector_inventory: ActorPort<GetEffectorPort, EffectorPort, anyhow::Error>,
         dependency_provider: DependencyProvider<B, D>,
         power_source_receiver: watch::Receiver<PowerSource>,
     ) -> EnvironmentController<B, D> {
         EnvironmentController {
             config: config.clone(),
             sequences: HashMap::new(),
-            spawned_effectors: HashMap::new(),
+            effector_inventory,
             dependency_provider,
             handle_child: None,
             power_source_receiver,
@@ -50,7 +51,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
     }
 
     pub async fn spawn(mut self) -> Result<Handle> {
-        self.spawn_effector_by_name("session").await?;
+        let session_effector_port = self.get_effector("session").await?;
         let schedules = Self::parse_schedules(&self.config)?;
         if schedules.len() == 0 {
             return Err(anyhow!(
@@ -62,8 +63,12 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
         for (source, schedule) in schedules {
             sequences.insert(
                 source,
-                self.sequence_for_schedule(&schedule, &effect_names_mapping)
-                    .await?,
+                self.sequence_for_schedule(
+                    &schedule,
+                    &effect_names_mapping,
+                    &session_effector_port,
+                )
+                .await?,
             );
         }
         self.sequences = sequences;
@@ -73,7 +78,6 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
             if let Err(e) = self.main_loop().await {
                 log::error!("Error in environment controller: {}", e);
             }
-            self.tear_down().await;
         });
         Ok(handle)
     }
@@ -188,6 +192,7 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
         &mut self,
         schedule: &Schedule,
         effect_names_mapping: &HashMap<String, (String, usize)>,
+        session_effector: &EffectorPort,
     ) -> Result<Sequence> {
         let mut m: HashMap<Duration, Vec<Effect>> = HashMap::new();
         for (effect_name, delay) in schedule.iter() {
@@ -209,7 +214,9 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
             ))
         }
         action_bunches.sort_by_key(|bunch| bunch.0);
-        action_bunches[0].1.push(self.idle_hint_action());
+        action_bunches[0]
+            .1
+            .push(self.idle_hint_action(session_effector.clone()));
         Ok(action_bunches)
     }
 
@@ -221,65 +228,27 @@ impl<B: BrightnessController, D: DisplayServer> EnvironmentController<B, D> {
         let mut actions = Vec::new();
         for effect in bunch.into_iter() {
             // Not checking for effect validity here, that's done on schedule parsing
-            let effector_name = effect_names_mapping.get(&effect.name).unwrap().0.clone();
-            if !self.spawned_effectors.contains_key(&effector_name) {
-                self.spawn_effector_by_name(&effector_name).await?;
-            }
+            let effector_name = effect_names_mapping.get(&effect.name).unwrap().0.as_ref();
             actions.push(Action::new(
                 effect.clone(),
-                self.spawned_effectors[&effector_name].clone(),
+                self.get_effector(effector_name).await?,
             ));
         }
         Ok(actions)
     }
 
-    fn idle_hint_action(&self) -> Action {
+    fn idle_hint_action(&self, session_effector: EffectorPort) -> Action {
         Action::new(
             ei::get_effects_for_effector("session")[0].clone(),
-            self.spawned_effectors["session"].clone(),
+            session_effector.clone(),
         )
     }
 
-    async fn spawn_effector_by_name(&mut self, effector_name: &str) -> Result<()> {
-        let config = self.config.get(effector_name);
-        let port = ei::spawn_effector(effector_name, &mut self.dependency_provider, config).await?;
-        self.spawned_effectors
-            .insert(effector_name.to_string(), port);
-        Ok(())
-    }
-
-    async fn tear_down(mut self) {
-        // Sequences contain actions - copies of ActorPorts Unless we get rid of
-        // all ActorPorts, the actors will never terminate and await_shutdown in
-        // terminate_effector will hang
-        self.sequences.clear();
-        for (name, port) in self.spawned_effectors.into_iter() {
-            if let Err(e) = Self::terminate_effector(&name, port).await {
-                log::error!(
-                    "Couldn't terminate effector {}, its effects may persist: {}",
-                    name,
-                    e
-                );
-            }
-        }
-    }
-
-    async fn terminate_effector(name: &str, port: EffectorPort) -> Result<()> {
-        log::debug!("Shutting {} down", name);
-        let running_effects = port
-            .request(crate::armaf::EffectorMessage::CurrentlyAppliedEffects)
-            .await
-            .context("Couldn't get running effect count")?;
-        log::debug!("{} has {} outstanding effects", name, running_effects);
-        for _ in 0..running_effects {
-            port.request(crate::armaf::EffectorMessage::Rollback)
-                .await
-                .context("Couldn't roll back effect")?;
-        }
-        log::debug!("All {} effects rolled back, awaiting shutdown", name);
-        port.await_shutdown().await;
-        log::debug!("{} shut down", name);
-        Ok(())
+    async fn get_effector(&self, name: &str) -> Result<EffectorPort> {
+        Ok(self
+            .effector_inventory
+            .request(GetEffectorPort(name.to_string()))
+            .await?)
     }
 }
 

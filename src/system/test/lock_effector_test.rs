@@ -61,6 +61,7 @@ async fn test_basic_flow() {
         0
     );
     assert!(start.elapsed() > std::time::Duration::from_secs(5));
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     assert!(!session_proxy.locked_hint().await.unwrap());
 }
 

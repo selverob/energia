@@ -17,6 +17,7 @@ struct SharedState {
 }
 
 /// A mock [DisplayServer], usable for testing
+#[derive(Clone)]
 pub struct Interface {
     receiver: watch::Receiver<SystemState>,
     shared_state: Arc<Mutex<RefCell<SharedState>>>,
