@@ -1,17 +1,18 @@
 use crate::{
     armaf::ActorPort,
     control::{
-        dbus_controller::{BusType, DBusController},
+        dbus_controller::DBusController,
         test::effects_counter::EffectsCounter,
     },
 };
 
 #[tokio::test]
+#[ignore]
 async fn test_locking() {
     let path = "/org/energia/test_dbus_locking";
     let name = "org.energia.lock_test.Manager";
     let ec = EffectsCounter::new();
-    let dbus_controller = DBusController::new(path, name, get_bus_type(), ec.get_port());
+    let dbus_controller = DBusController::new(path, name, ec.get_port());
     let handle = dbus_controller
         .spawn()
         .await
@@ -43,11 +44,12 @@ async fn test_locking() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_errors() {
     let path = "/org/energia/test_dbus_errors";
     let name = "org.energia.errors_test.Manager";
     let (port, _) = ActorPort::make();
-    let dbus_controller = DBusController::new(path, name, get_bus_type(), port);
+    let dbus_controller = DBusController::new(path, name, port);
     let handle = dbus_controller
         .spawn()
         .await
@@ -59,14 +61,4 @@ async fn test_errors() {
         .await;
     assert!(result.is_err());
     handle.await_shutdown().await;
-}
-
-fn get_bus_type() -> BusType {
-    // GitLab CI only has system bus while on local, we want to use session bus
-    // to not need root privileges
-    if std::env::var("CI").is_err() {
-        BusType::Session
-    } else {
-        BusType::System
-    }
 }

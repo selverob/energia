@@ -1,15 +1,8 @@
 use crate::armaf::{EffectorMessage, EffectorPort, Handle};
 
-#[derive(Debug, Clone, Copy)]
-pub enum BusType {
-    Session,
-    System,
-}
-
 pub struct DBusController {
     path: String,
     name: String,
-    bus_type: BusType,
     lock_effector: EffectorPort,
 }
 
@@ -17,25 +10,19 @@ impl DBusController {
     pub fn new(
         path: &str,
         name: &str,
-        bus_type: BusType,
         lock_effector: EffectorPort,
     ) -> DBusController {
         DBusController {
             path: path.to_string(),
             name: name.to_string(),
-            bus_type,
             lock_effector,
         }
     }
 
     pub async fn spawn(self) -> anyhow::Result<Handle> {
         let (handle, mut handle_child) = Handle::new();
-        let builder = match self.bus_type {
-            BusType::System => zbus::ConnectionBuilder::system()?,
-            BusType::Session => zbus::ConnectionBuilder::session()?,
-        };
         let moved_path = self.path.clone();
-        let connection = builder
+        let connection = zbus::ConnectionBuilder::session()?
             .name(self.name.clone().as_str())?
             .serve_at(moved_path.as_str(), self)?
             .build()
