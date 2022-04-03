@@ -46,6 +46,15 @@ documentation](https://www.rust-lang.org/learn/get-started). Energia or its
 dependencies don't use unstable Rust features, so installing a stable toolchain
 is sufficient.
 
+If you can't be bothered to clone this repository, you can use `cargo install`:
+
+```
+cargo install --git=https://github.com/selverob/energia # Install from the master branch
+cargo install --git=https://github.com/selverob/energia --tag v0.1.0 # Install the lastest stable version
+```
+
+This will compile Energia and install it to `~/.cargo/bin/energia`.
+
 ### Starting Energia
 
 Due to some architectural limitations, Energia needs to run *within* a user's
