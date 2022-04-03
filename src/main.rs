@@ -7,10 +7,9 @@ mod control;
 mod external;
 mod system;
 
-use armaf::{EffectorPort, Handle};
 use control::{dbus_controller::DBusController, environment_controller::EnvironmentController};
-use env_logger;
 use external::dependency_provider::DependencyProvider;
+use flexi_logger::{FileSpec, Logger};
 use std::env;
 use tokio::{self, fs};
 
@@ -25,33 +24,31 @@ use crate::{
     },
 };
 
-fn initialize_logging() {
-    if env::var("RUST_LOG").is_err() {
-        env::set_var("RUST_LOG", "debug");
-    }
-    env_logger::init();
+fn initialize_logging() -> anyhow::Result<flexi_logger::LoggerHandle> {
+    let user_home = env::var("HOME").unwrap_or("".to_owned());
+    let log_dir =
+        env::var("ENERGIA_LOG_DIR").unwrap_or(format!("{}/.config/energia/log", user_home));
+    Ok(Logger::try_with_env_or_str("info")?
+        .log_to_file(FileSpec::default().directory(log_dir).basename("energia"))
+        .print_message()
+        .duplicate_to_stderr(flexi_logger::Duplicate::Debug)
+        .start()?)
 }
 
 async fn parse_config() -> anyhow::Result<toml::Value> {
-    let config_path = env::var("ENERGIA_CONFIG_PATH").unwrap_or("config.toml".to_owned());
+    let user_home = env::var("HOME").unwrap_or("".to_owned());
+    let config_path = env::var("ENERGIA_CONFIG_PATH")
+        .unwrap_or(format!("{}/.config/energia/config.toml", user_home));
     Ok(toml::from_slice(&fs::read(config_path).await?)?)
-}
-
-async fn try_launch_dbus_controller(lock_effector: Option<EffectorPort>) -> Option<Handle> {
-    let controller =
-        DBusController::new("/org/energia/Manager", "org.energia.Manager", lock_effector);
-    match controller.spawn().await {
-        Ok(handle) => Some(handle),
-        Err(e) => {
-            log::error!("Couldn't spawn D-Bus API: {}", e);
-            None
-        }
-    }
 }
 
 #[tokio::main]
 async fn main() {
-    initialize_logging();
+    let log_handle = initialize_logging();
+    if let Err(e) = log_handle.as_ref() {
+        println!("Failed to initialize logging system: {}", e);
+    }
+    log_panics::init();
 
     let config = parse_config().await.expect("Couldn't read configuration");
     log::info!("Parsed config is: {:?}", config);
