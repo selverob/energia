@@ -48,6 +48,7 @@ async fn main() {
     if let Err(e) = log_handle.as_ref() {
         println!("Failed to initialize logging system: {}", e);
     }
+    log_panics::init();
 
     let config = parse_config().await.expect("Couldn't read configuration");
     log::info!("Parsed config is: {:?}", config);
