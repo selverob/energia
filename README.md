@@ -141,6 +141,8 @@ behavior:
     * Configuration:
         * `command` (string, required) - the path to the locker to execute.
         * `args` (list of strings, required) - arguments to be passed to the locker.
+    * If configuring this effector will cause additional features to be enabled,
+      see [below](#additional-locking-behavior).
 * **sleep** effector
     * Provided effects:
         * `sleep` - put the computer to sleep as if by calling `systemd suspend`
@@ -155,3 +157,23 @@ behavior:
           schedule.
     * Configuration:
         * N/A
+
+## Additional locking behavior
+
+If you configure the lock effector, two additional features will be enabled,
+even if `lock` action is not in any schedule:
+
+* **Automatic locking on sleep** - When Energia detects that your computer is
+going to sleep, it will invoke the locker.
+
+* **D-Bus lock invocation API** - You can lock your computer by sending a Lock
+  message on session/user D-Bus. The service is `org.energia.Manager`, path is
+  `/org/energia/Manager` and the interface is `org.energia.Manager`.
+
+  This can be used in conjunction with `busctl` to allow hotkey-triggered
+  locking. For example, if you want to lock your session with a Modifier+Shift+L
+  hotkey in i3, you can add the following to your i3 config:
+
+  ```
+  bindsym $mod+Shift+l exec busctl --user call org.energia.Manager /org/energia/Manager org.energia.Manager Lock
+  ```
