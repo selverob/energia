@@ -10,7 +10,6 @@ use crate::{
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use logind_zbus::manager::InhibitType;
-use serde::de::Deserialize;
 
 pub struct BrightnessEffector;
 

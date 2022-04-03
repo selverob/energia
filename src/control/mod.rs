@@ -1,8 +1,10 @@
 mod broadcast_adapter;
-mod effector_inventory;
+pub mod dbus_controller;
+pub mod effector_inventory;
 pub mod environment_controller;
 pub mod idleness_controller;
 pub mod sequencer;
+pub mod sleep_controller;
 
 #[cfg(test)]
 mod test;
