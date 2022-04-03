@@ -3,11 +3,11 @@ use crate::armaf::{EffectorMessage, EffectorPort, Handle};
 pub struct DBusController {
     path: String,
     name: String,
-    lock_effector: EffectorPort,
+    lock_effector: Option<EffectorPort>,
 }
 
 impl DBusController {
-    pub fn new(path: &str, name: &str, lock_effector: EffectorPort) -> DBusController {
+    pub fn new(path: &str, name: &str, lock_effector: Option<EffectorPort>) -> DBusController {
         DBusController {
             path: path.to_string(),
             name: name.to_string(),
@@ -44,11 +44,17 @@ impl DBusController {
 #[zbus::dbus_interface(name = "org.energia.Manager")]
 impl DBusController {
     async fn lock(&self) -> zbus::fdo::Result<()> {
-        log::info!("Locking system");
-        if let Err(e) = self.lock_effector.request(EffectorMessage::Execute).await {
-            Err(zbus::fdo::Error::Failed(format!("{}", e)))
+        if let Some(port) = self.lock_effector.as_ref() {
+            log::info!("Locking system");
+            if let Err(e) = port.request(EffectorMessage::Execute).await {
+                Err(zbus::fdo::Error::Failed(format!("{}", e)))
+            } else {
+                Ok(())
+            }
         } else {
-            Ok(())
+            Err(zbus::fdo::Error::UnknownMethod(
+                "Method not supported when lock effector is not configured".to_string(),
+            ))
         }
     }
 }

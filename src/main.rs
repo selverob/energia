@@ -37,7 +37,7 @@ async fn parse_config() -> anyhow::Result<toml::Value> {
     Ok(toml::from_slice(&fs::read(config_path).await?)?)
 }
 
-async fn try_launch_dbus_controller(lock_effector: EffectorPort) -> Option<Handle> {
+async fn try_launch_dbus_controller(lock_effector: Option<EffectorPort>) -> Option<Handle> {
     let controller =
         DBusController::new("/org/energia/Manager", "org.energia.Manager", lock_effector);
     match controller.spawn().await {
@@ -106,11 +106,14 @@ async fn main() {
         .map(|p| Some(p))
         .unwrap_or(None);
 
-    let dbus_controller_handle = if let Some(ref port) = lock_effector {
-        try_launch_dbus_controller(port.clone()).await
-    } else {
-        None
-    };
+    let dbus_controller_handle = DBusController::new(
+        "/org/energia/Manager",
+        "org.energia.Manager",
+        lock_effector.clone(),
+    )
+    .spawn()
+    .await
+    .expect("Failed to start D-Bus controller");
 
     let sleep_controller_handle = SleepController::new(
         sleep_sensor_channel.subscribe(),
@@ -121,12 +124,10 @@ async fn main() {
     .await;
 
     tokio::signal::ctrl_c().await.expect("Signal wait failed");
-    if let Some(h) = dbus_controller_handle {
-        h.await_shutdown().await;
-    }
     environment_controller_handle.await_shutdown().await;
     sleep_controller_handle.await_shutdown().await;
     sleep_sensor_handle.await_shutdown().await;
+    dbus_controller_handle.await_shutdown().await;
     effector_inventory.await_shutdown().await;
 
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
