@@ -1,0 +1,37 @@
+---
+name: "tagged-release"
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  tagged-release:
+    name: "Tagged Release"
+    runs-on: "ubuntu-latest"
+
+    steps:
+      - name: Install dependencies
+        run: "sudo apt-get update -y && sudo apt-get install -y xvfb dbus dbus-x11"
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Enable dependency caching
+        uses: Swatinem/rust-cache@v1
+      - name: "Build"
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+      - uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: false
+          files: |
+            target/release/energia
+            energia

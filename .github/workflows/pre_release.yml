@@ -1,11 +1,9 @@
 name: "pre-release"
 
-#on:
-#  push:
-#    branches:
-#      - "master"
-
-on: [push]
+on:
+  push:
+    branches:
+      - "master"
 
 jobs:
   pre-release:
