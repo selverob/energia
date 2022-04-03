@@ -15,8 +15,6 @@ use crate::{
 #[tokio::test]
 #[ignore]
 async fn test_happy_path() {
-    std::env::set_var("RUST_LOG", "debug");
-    env_logger::init();
     let mut connection_factory = ConnectionFactory::new();
     let connection = connection_factory.get_system().await.unwrap();
     let manager_proxy = logind_zbus::manager::ManagerProxy::new(&connection)

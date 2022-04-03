@@ -39,13 +39,25 @@ You may find that you want two more things to be installed:
 
 For now, Energia is not distributed as a package. Since it's written in Rust,
 you can compile it yourself with a simple `cargo build` command and then plop it
-down on your system and run it as a systemd user service. A sample unit file is
-coming soon. 
+down on your system.
 
 For more information about installing a Rust toolchain, please refer to [their
 documentation](https://www.rust-lang.org/learn/get-started). Energia or its
 dependencies don't use unstable Rust features, so installing a stable toolchain
 is sufficient.
+
+### Starting Energia
+
+Due to some architectural limitations, Energia needs to run *within* a user's
+logind session. Due to that, you can't run Energia as a systemd unit. You should
+start Energia the way you start any other applications which need to run after
+the start of your display server / window manager.
+
+For example, if you're using i3 as your window manager, you can put this into
+your config:
+```
+exec --no-startup-id energia
+```
 
 ## Glossary
 
@@ -115,11 +127,14 @@ There are two environment variables that can be set to control Energia's
 behavior:
 
 * `ENERGIA_CONFIG_PATH` which sets the path to the configuration file described
-  above. By default, Energia will look for `config.toml` in the current
-  directory.
+  above. By default, Energia will load config from `~/.config/energia/config.toml`.
 * `RUST_LOG` which sets the log verbosity. Available levels are `error`, `warn`,
   `info`, `debug` and `trace`. Now during development, the default value is
-  `debug`.
+  `debug`. Additional logging specification options can be found in
+  `flexi_logger`'s
+  [docs](https://docs.rs/flexi_logger/latest/flexi_logger/struct.LogSpecification.html).
+* `ENERGIA_LOG_DIR` which sets the directory into which the logs should be
+  written. By default, this is set to `~/.config/energia/log/`.
 
 ## A list of effectors, provided effects and configurations
 
