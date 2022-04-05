@@ -186,7 +186,7 @@ impl X11Interface {
                     log::info!("X11 idleness control window destroyed, stopping watcher");
                     return;
                 }
-                _ => error!("Unknown event received from X11"),
+                Ok(e) => error!("Unknown event received from X11: {:?}", e),
             }
         });
         Ok(rx)
