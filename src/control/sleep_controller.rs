@@ -68,7 +68,9 @@ impl<C: DisplayServerController> SleepController<C> {
                 log::error!("Failed to lock system before going to sleep: {}", e);
             }
         }
-        let _ = ack_channel.send(ReadyToSleep).await;
+        if let Err(e) = ack_channel.send(ReadyToSleep).await {
+            log::error!("Acknowledging sleep readiness failed: {}", e);
+        }
     }
 
     async fn force_activity(&mut self) {
