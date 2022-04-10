@@ -30,6 +30,7 @@ fn initialize_logging() -> anyhow::Result<flexi_logger::LoggerHandle> {
         env::var("ENERGIA_LOG_DIR").unwrap_or(format!("{}/.config/energia/log", user_home));
     Ok(Logger::try_with_env_or_str("info")?
         .log_to_file(FileSpec::default().directory(log_dir).basename("energia"))
+        .format(flexi_logger::opt_format)
         .print_message()
         .duplicate_to_stderr(flexi_logger::Duplicate::Debug)
         .start()?)
