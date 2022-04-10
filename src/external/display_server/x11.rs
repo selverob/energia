@@ -186,6 +186,10 @@ impl X11Interface {
                     log::info!("X11 idleness control window destroyed, stopping watcher");
                     return;
                 }
+                Ok(Event::MappingNotify(_)) => {
+                    // See https://tronche.com/gui/x/xlib/events/window-state-change/mapping.html
+                    // MappingNotify is an event which cannot be ignored, so let's just drop it.
+                }
                 Ok(e) => error!("Unknown event received from X11: {:?}", e),
             }
         });
