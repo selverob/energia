@@ -70,6 +70,37 @@ fn parse_schedules(config: &toml::Value) -> Result<HashMap<ScheduleType, Schedul
     Ok(schedules)
 }
 
+fn parse_duration(string: &str) -> Result<Duration> {
+    let mut seconds = 0;
+    for substr in string.split_ascii_whitespace() {
+        seconds += match substr.chars().nth(substr.len() - 1) {
+            Some('s') => parse_duration_numeric(substr)?,
+            Some('m') => parse_duration_numeric(substr)? * 60,
+            Some('h') => parse_duration_numeric(substr)? * 3600,
+            Some(_) => {
+                return Err(anyhow!(
+                    "syntax error in duration: Duration compoment {} doesn't have a unit",
+                    substr
+                ))
+            }
+            None => {
+                return Err(anyhow!(
+                    "syntax error in duration: Duration compoment {} too short",
+                    substr
+                ))
+            }
+        }
+    }
+
+    Ok(Duration::from_secs(seconds))
+}
+
+fn parse_duration_numeric(component: &str) -> Result<u64> {
+    component[0..component.len() - 1]
+        .parse()
+        .context("syntax error in duration: numeric component couldn't be parsed")
+}
+
 fn parse_schedule(schedule_config: &toml::Value) -> Result<Schedule> {
     let table = schedule_config
         .as_table()
@@ -146,6 +177,7 @@ impl<D: DisplayServerController> EnvironmentController<D> {
             );
         }
         self.sequences = sequences;
+        self.get_low_power_treshold();
         let (handle, receiver) = Handle::new();
         self.handle_child = Some(receiver);
         tokio::spawn(async move {
@@ -156,6 +188,31 @@ impl<D: DisplayServerController> EnvironmentController<D> {
         Ok(handle)
     }
 
+    fn get_low_power_treshold(&mut self) {
+        let config_result = self
+            .config
+            .get("battery")
+            .ok_or("no battery table defined")
+            .and_then(|table| {
+                table
+                    .get("low_battery_percentage")
+                    .ok_or("low_battery_percentage key is not defined")
+            })
+            .and_then(|value| {
+                value
+                    .as_integer()
+                    .ok_or("battery.low_battery_percentage is not an integer")
+            });
+        let low_power_schedule_defined = self.sequences.contains_key(&ScheduleType::LowBattery);
+        match config_result {
+            Ok(treshold) => self.low_power_treshold = Some(treshold as u64),
+            Err(e) if low_power_schedule_defined => {
+                log::error!("Low power schedule is defined but {} in configuration. Schedule will never be used.", e);
+            }
+            _ => {}
+        }
+    }
+
     async fn main_loop(&mut self) -> Result<()> {
         let power_status = *self.power_status_receiver.borrow_and_update();
         let mut schedule_type = self.power_status_to_schedule_type(power_status);
@@ -163,6 +220,7 @@ impl<D: DisplayServerController> EnvironmentController<D> {
         let mut sequence = self.sequence_for_schedule_type(schedule_type);
         let mut reconciliation_context = ReconciliationContext::empty();
         loop {
+            // New actors' initialization
             let (durations, actions) = sequence.clone().into_iter().unzip();
 
             let idleness_controller = IdlenessController::new(
@@ -180,6 +238,8 @@ impl<D: DisplayServerController> EnvironmentController<D> {
                 reconciliation_context.initial_sleep_shorten,
             );
             let sequencer_port = sequencer.spawn().await?;
+
+            // Waiting for termination or schedule change
             loop {
                 tokio::select! {
                     _ = self.handle_child.as_mut().unwrap().should_terminate() => {
@@ -197,6 +257,8 @@ impl<D: DisplayServerController> EnvironmentController<D> {
                     }
                 }
             }
+
+            // Generating the reconciliation context and shutting down old actors
             log::info!("Will use schedule for {:?}", schedule_type);
             let running_time = match sequencer_port.request(GetRunningTime).await {
                 Ok(time) => time,
@@ -459,37 +521,6 @@ impl ReconciliationContext {
             .map(|action| action.effect.name.clone())
             .collect()
     }
-}
-
-fn parse_duration(string: &str) -> Result<Duration> {
-    let mut seconds = 0;
-    for substr in string.split_ascii_whitespace() {
-        seconds += match substr.chars().nth(substr.len() - 1) {
-            Some('s') => parse_duration_numeric(substr)?,
-            Some('m') => parse_duration_numeric(substr)? * 60,
-            Some('h') => parse_duration_numeric(substr)? * 3600,
-            Some(_) => {
-                return Err(anyhow!(
-                    "syntax error in duration: Duration compoment {} doesn't have a unit",
-                    substr
-                ))
-            }
-            None => {
-                return Err(anyhow!(
-                    "syntax error in duration: Duration compoment {} too short",
-                    substr
-                ))
-            }
-        }
-    }
-
-    Ok(Duration::from_secs(seconds))
-}
-
-fn parse_duration_numeric(component: &str) -> Result<u64> {
-    component[0..component.len() - 1]
-        .parse()
-        .context("syntax error in duration: numeric component couldn't be parsed")
 }
 
 /// Convert a [Vec] of durations into a [Vec] of second timeouts, each one

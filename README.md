@@ -18,7 +18,7 @@ Currently, your system must have these 3 components installed and in use:
 
 * `X11` - the display server announces the idleness and handles screen shutdowns
 
-* `upower` - used to detect the system's power source
+* `upower` - used to detect the system's power source and battery percentage
 
 Since Energia has a highly modular codebase, most of these can be replaced or
 adapted (to use e.g. Wayland or phase out `upower`) by anyone who is at least a
@@ -120,6 +120,16 @@ sleep       = "10m"
 lock        = "5m"
 screen_dim  = "10m"
 screen_off  = "15m"
+
+# When you're running out of battery, you may want Energia to be more aggressive
+[schedule.low_battery]
+screen_dim  = "1m"
+sleep       = "5m"
+
+[battery]
+# Battery percentage at which the low_battery schedule will apply.
+# If not set, low battery schedule will never be used.
+low_battery_percentage = 20
 
 # Configuration for lock effector
 [lock]
