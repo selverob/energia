@@ -9,7 +9,7 @@ use crate::{
         sequencer::{GetRunningTime, Sequencer},
     },
     external::display_server::{DisplayServerController, SystemState},
-    system::{inhibition_sensor::GetInhibitions, upower_sensor::PowerSource},
+    system::{inhibition_sensor::GetInhibitions, upower_sensor::PowerStatus},
 };
 use anyhow::{anyhow, Context, Result};
 use logind_zbus::manager::Inhibitor;
@@ -17,20 +17,120 @@ use std::{
     collections::{HashMap, HashSet},
     time::Duration,
 };
+use thiserror::Error;
 use tokio::sync::watch;
 
+#[derive(Clone, Debug, Error)]
+#[error("{0} is not a valid configuration name for a schedule")]
+struct TryFromScheduleTypeError(String);
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+enum ScheduleType {
+    ExternalPower,
+    Battery,
+    LowBattery,
+}
+
+impl TryFrom<&str> for ScheduleType {
+    type Error = TryFromScheduleTypeError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "external" => Ok(ScheduleType::ExternalPower),
+            "battery" => Ok(ScheduleType::Battery),
+            "low_battery" => Ok(ScheduleType::LowBattery),
+            unknown => Err(TryFromScheduleTypeError(unknown.to_owned())),
+        }
+    }
+}
+
 type Schedule = HashMap<String, Duration>;
+
+fn parse_schedules(config: &toml::Value) -> Result<HashMap<ScheduleType, Schedule>> {
+    let mut schedules = HashMap::new();
+
+    let empty_placeholder = toml::Value::Table(toml::value::Map::new());
+    let schedule_tables = config
+        .get("schedule")
+        .unwrap_or(&empty_placeholder)
+        .as_table()
+        .unwrap_or(empty_placeholder.as_table().unwrap());
+
+    for key in schedule_tables.keys() {
+        let schedule_type: Result<ScheduleType, TryFromScheduleTypeError> = key.as_str().try_into();
+        match schedule_type {
+            Err(e) => log::error!("Problem when parsing a schedule: {}", e),
+            Ok(typ) => {
+                let schedule = parse_schedule(&schedule_tables[key])?;
+                schedules.insert(typ, schedule);
+            }
+        }
+    }
+
+    Ok(schedules)
+}
+
+fn parse_duration(string: &str) -> Result<Duration> {
+    let mut seconds = 0;
+    for substr in string.split_ascii_whitespace() {
+        seconds += match substr.chars().nth(substr.len() - 1) {
+            Some('s') => parse_duration_numeric(substr)?,
+            Some('m') => parse_duration_numeric(substr)? * 60,
+            Some('h') => parse_duration_numeric(substr)? * 3600,
+            Some(_) => {
+                return Err(anyhow!(
+                    "syntax error in duration: Duration compoment {} doesn't have a unit",
+                    substr
+                ))
+            }
+            None => {
+                return Err(anyhow!(
+                    "syntax error in duration: Duration compoment {} too short",
+                    substr
+                ))
+            }
+        }
+    }
+
+    Ok(Duration::from_secs(seconds))
+}
+
+fn parse_duration_numeric(component: &str) -> Result<u64> {
+    component[0..component.len() - 1]
+        .parse()
+        .context("syntax error in duration: numeric component couldn't be parsed")
+}
+
+fn parse_schedule(schedule_config: &toml::Value) -> Result<Schedule> {
+    let table = schedule_config
+        .as_table()
+        .ok_or(anyhow!("Schedule should be a table, not a scalar or array"))?;
+    let mut m = HashMap::new();
+    for (key, value) in table {
+        if let Some(value_str) = value.as_str() {
+            m.insert(key.to_string(), parse_duration(value_str)?);
+        } else {
+            return Err(anyhow!(
+                "timeout for {} is not a string in duration format",
+                key
+            ));
+        }
+    }
+    Ok(m)
+}
+
 type Sequence = Vec<(Duration, Vec<Action>)>;
 
 pub struct EnvironmentController<D: DisplayServerController> {
     config: toml::Value,
-    sequences: HashMap<PowerSource, Sequence>,
+    sequences: HashMap<ScheduleType, Sequence>,
     effector_inventory: ActorPort<GetEffectorPort, EffectorPort, anyhow::Error>,
     inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
     ds_controller: D,
     idleness_channel: watch::Receiver<SystemState>,
     handle_child: Option<HandleChild>,
-    power_source_receiver: watch::Receiver<PowerSource>,
+    power_status_receiver: watch::Receiver<PowerStatus>,
+    low_power_treshold: Option<u64>,
 }
 
 impl<D: DisplayServerController> EnvironmentController<D> {
@@ -40,7 +140,7 @@ impl<D: DisplayServerController> EnvironmentController<D> {
         inhibition_sensor: ActorPort<GetInhibitions, Vec<Inhibitor>, anyhow::Error>,
         ds_controller: D,
         idleness_channel: watch::Receiver<SystemState>,
-        power_source_receiver: watch::Receiver<PowerSource>,
+        power_status_receiver: watch::Receiver<PowerStatus>,
     ) -> EnvironmentController<D> {
         EnvironmentController {
             config: config.clone(),
@@ -50,13 +150,14 @@ impl<D: DisplayServerController> EnvironmentController<D> {
             ds_controller,
             idleness_channel,
             handle_child: None,
-            power_source_receiver,
+            power_status_receiver,
+            low_power_treshold: None,
         }
     }
 
     pub async fn spawn(mut self) -> Result<Handle> {
         let session_effector_port = self.get_effector("session").await?;
-        let schedules = Self::parse_schedules(&self.config)?;
+        let schedules = parse_schedules(&self.config)?;
         if schedules.len() == 0 {
             return Err(anyhow!(
                 "No schedule defined. Define either schedule.external or schedule.battery."
@@ -76,6 +177,7 @@ impl<D: DisplayServerController> EnvironmentController<D> {
             );
         }
         self.sequences = sequences;
+        self.get_low_power_treshold();
         let (handle, receiver) = Handle::new();
         self.handle_child = Some(receiver);
         tokio::spawn(async move {
@@ -86,12 +188,39 @@ impl<D: DisplayServerController> EnvironmentController<D> {
         Ok(handle)
     }
 
+    fn get_low_power_treshold(&mut self) {
+        let config_result = self
+            .config
+            .get("battery")
+            .ok_or("no battery table defined")
+            .and_then(|table| {
+                table
+                    .get("low_battery_percentage")
+                    .ok_or("low_battery_percentage key is not defined")
+            })
+            .and_then(|value| {
+                value
+                    .as_integer()
+                    .ok_or("battery.low_battery_percentage is not an integer")
+            });
+        let low_power_schedule_defined = self.sequences.contains_key(&ScheduleType::LowBattery);
+        match config_result {
+            Ok(treshold) => self.low_power_treshold = Some(treshold as u64),
+            Err(e) if low_power_schedule_defined => {
+                log::error!("Low power schedule is defined but {} in configuration. Schedule will never be used.", e);
+            }
+            _ => {}
+        }
+    }
+
     async fn main_loop(&mut self) -> Result<()> {
-        let power_source = *self.power_source_receiver.borrow_and_update();
-        log::info!("New power source is {:?}", power_source);
-        let mut sequence = self.sequence_for_power_source(power_source);
+        let power_status = *self.power_status_receiver.borrow_and_update();
+        let mut schedule_type = self.power_status_to_schedule_type(power_status);
+        log::info!("Will use schedule for {:?}", schedule_type);
+        let mut sequence = self.sequence_for_schedule_type(schedule_type);
         let mut reconciliation_context = ReconciliationContext::empty();
         loop {
+            // New actors' initialization
             let (durations, actions) = sequence.clone().into_iter().unzip();
 
             let idleness_controller = IdlenessController::new(
@@ -109,81 +238,77 @@ impl<D: DisplayServerController> EnvironmentController<D> {
                 reconciliation_context.initial_sleep_shorten,
             );
             let sequencer_port = sequencer.spawn().await?;
-            tokio::select! {
-                _ = self.handle_child.as_mut().unwrap().should_terminate() => {
-                    log::info!("Handle dropped, terminating");
-                    sequencer_port.await_shutdown().await;
-                    return Ok(());
-                }
-                _ = self.power_source_receiver.changed() => {
-                    let running_time = match sequencer_port.request(GetRunningTime).await {
-                        Ok(time) => time,
-                        Err(e) => {
-                            log::error!("Couldn't get running time from sequencer, assuming system is awakened: {:?}", e);
-                            Duration::ZERO
+
+            // Waiting for termination or schedule change
+            loop {
+                tokio::select! {
+                    _ = self.handle_child.as_mut().unwrap().should_terminate() => {
+                        log::info!("Handle dropped, terminating");
+                        sequencer_port.await_shutdown().await;
+                        return Ok(());
+                    }
+                    _ = self.power_status_receiver.changed() => {
+                        let power_status = *self.power_status_receiver.borrow_and_update();
+                        let new_schedule_type = self.power_status_to_schedule_type(power_status);
+                        if new_schedule_type != schedule_type {
+                            schedule_type = new_schedule_type;
+                            break;
                         }
-                    };
-                    sequencer_port.await_shutdown().await;
-                    let power_source = *self.power_source_receiver.borrow_and_update();
-                    log::info!("New power source is {:?}", power_source);
-                    let new_sequence = self.sequence_for_power_source(power_source);
-                    reconciliation_context = ReconciliationContext::calculate(&sequence, &new_sequence, running_time);
-                    log::debug!("Reconciliation context is {:?}", reconciliation_context);
-                    sequence = new_sequence;
+                    }
+                }
+            }
+
+            // Generating the reconciliation context and shutting down old actors
+            log::info!("Will use schedule for {:?}", schedule_type);
+            let running_time = match sequencer_port.request(GetRunningTime).await {
+                Ok(time) => time,
+                Err(e) => {
+                    log::error!("Couldn't get running time from sequencer, assuming system is awakened: {:?}", e);
+                    Duration::ZERO
+                }
+            };
+            sequencer_port.await_shutdown().await;
+            let new_sequence = self.sequence_for_schedule_type(schedule_type);
+            reconciliation_context =
+                ReconciliationContext::calculate(&sequence, &new_sequence, running_time);
+            log::debug!("Reconciliation context is {:?}", reconciliation_context);
+            sequence = new_sequence;
+        }
+    }
+
+    fn power_status_to_schedule_type(&self, status: PowerStatus) -> ScheduleType {
+        match (status, self.low_power_treshold) {
+            (PowerStatus::External, _) => ScheduleType::ExternalPower,
+            (PowerStatus::Battery(_), None) => ScheduleType::Battery,
+            (PowerStatus::Battery(percentage), Some(treshold)) => {
+                if percentage > treshold {
+                    ScheduleType::Battery
+                } else {
+                    ScheduleType::LowBattery
                 }
             }
         }
     }
 
-    fn sequence_for_power_source(&self, source: PowerSource) -> Sequence {
-        if self.sequences.contains_key(&source) {
-            self.sequences[&source].clone()
-        } else {
-            log::warn!(
-                "Schedule for power source {:?} is not defined, using a fallback schedule.",
-                source
-            );
-            self.sequences.iter().next().unwrap().1.clone()
+    fn sequence_for_schedule_type(&self, typ: ScheduleType) -> Sequence {
+        if self.sequences.contains_key(&typ) {
+            return self.sequences[&typ].clone();
         }
-    }
-
-    fn parse_schedules(config: &toml::Value) -> Result<HashMap<PowerSource, Schedule>> {
-        let mut schedules = HashMap::new();
-
-        let empty_placeholder = toml::Value::String(String::new());
-        let schedule_dict = config.get("schedule").unwrap_or(&empty_placeholder);
-
-        let possible_schedules = vec![
-            ("battery", PowerSource::Battery),
-            ("external", PowerSource::External),
+        log::warn!(
+            "Schedule of type {:?} is not defined, using a fallback schedule.",
+            typ
+        );
+        let schedule_substitutions = vec![
+            (ScheduleType::LowBattery, ScheduleType::Battery),
+            (ScheduleType::Battery, ScheduleType::ExternalPower),
         ];
-        for (key, power_source) in possible_schedules {
-            if let Some(schedule_config) = schedule_dict.get(key) {
-                let schedule = Self::parse_schedule(schedule_config)?;
-                schedules.insert(power_source, schedule);
-            } else {
-                log::debug!("No {} schedule found", key);
-            };
-        }
-        Ok(schedules)
-    }
-
-    fn parse_schedule(schedule_config: &toml::Value) -> Result<Schedule> {
-        let table = schedule_config
-            .as_table()
-            .ok_or(anyhow!("Schedule should be a table, not a scalar or array"))?;
-        let mut m = HashMap::new();
-        for (key, value) in table {
-            if let Some(value_str) = value.as_str() {
-                m.insert(key.to_string(), parse_duration(value_str)?);
-            } else {
-                return Err(anyhow!(
-                    "timeout for {} is not a string in duration format",
-                    key
-                ));
+        for (original_type, substitution_type) in schedule_substitutions.iter() {
+            if typ == *original_type && self.sequences.contains_key(&substitution_type) {
+                return self.sequences[&substitution_type].clone();
             }
         }
-        Ok(m)
+
+        self.sequences.iter().next().unwrap().1.clone()
     }
 
     async fn sequence_for_schedule(
@@ -396,37 +521,6 @@ impl ReconciliationContext {
             .map(|action| action.effect.name.clone())
             .collect()
     }
-}
-
-fn parse_duration(string: &str) -> Result<Duration> {
-    let mut seconds = 0;
-    for substr in string.split_ascii_whitespace() {
-        seconds += match substr.chars().nth(substr.len() - 1) {
-            Some('s') => parse_duration_numeric(substr)?,
-            Some('m') => parse_duration_numeric(substr)? * 60,
-            Some('h') => parse_duration_numeric(substr)? * 3600,
-            Some(_) => {
-                return Err(anyhow!(
-                    "syntax error in duration: Duration compoment {} doesn't have a unit",
-                    substr
-                ))
-            }
-            None => {
-                return Err(anyhow!(
-                    "syntax error in duration: Duration compoment {} too short",
-                    substr
-                ))
-            }
-        }
-    }
-
-    Ok(Duration::from_secs(seconds))
-}
-
-fn parse_duration_numeric(component: &str) -> Result<u64> {
-    component[0..component.len() - 1]
-        .parse()
-        .context("syntax error in duration: numeric component couldn't be parsed")
 }
 
 /// Convert a [Vec] of durations into a [Vec] of second timeouts, each one
