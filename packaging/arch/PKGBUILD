@@ -1,0 +1,39 @@
+#! /usr/bin/env bash
+# Maintainer: Róbert Selvek <robert@selvek.me>
+pkgname=energia-power-manager
+pkgver=0.3.0
+pkgrel=1
+pkgdesc="A simple and configurable power manager"
+arch=('x86_64')
+url="https://github.com/selverob/energia"
+license=('GPL')
+depends=(upower)
+makedepends=(cargo)
+checkdepends=(xorg-server-xvfb)
+source=("$pkgname-$pkgver.tar.gz::https://github.com/selverob/energia/archive/refs/tags/v$pkgver.tar.gz")
+#source=("$pkgname-$pkgver.tar.gz::https://github.com/selverob/energia/archive/113b6e188a5f0b6d5c964f1995f7e2007eb766b4.tar.gz")
+md5sums=(e92fa61bafa3086451d8cbd699621c82)
+
+prepare() {
+	cd "energia-$pkgver"
+	cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+}
+
+build() {
+	cd "energia-$pkgver"
+	export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release --all-features
+}
+
+check() {
+	cd "energia-$pkgver"
+	export RUSTUP_TOOLCHAIN=stable
+    cargo test --frozen --all-features
+}
+
+package() {
+	cd "energia-$pkgver"
+	install -Dm0755 -t "$pkgdir/usr/bin/" "target/release/energia"
+	install -Dm644 packaging/energia.1 "$pkgdir/usr/share/man/man1/energia.1"
+}
