@@ -144,6 +144,7 @@ impl SleepSensor {
         while received_confirmations < expected_confirmations {
             tokio::select! {
                 _ = &mut timeout => {
+                    log::warn!("{} actors subscribed to sleep notifications did not respond to notification", expected_confirmations - received_confirmations);
                     return Err(SleepSensorError::DownstreamTimeout);
                 }
                 res = receiver.recv() => {
@@ -155,6 +156,7 @@ impl SleepSensor {
                         return Ok(())
                     }
                     received_confirmations += 1;
+                    log::debug!("{} out of {} confirmations about sleep readiness received", received_confirmations, expected_confirmations);
                 }
                 _ = self.handle.as_mut().unwrap().should_terminate() => return Err(SleepSensorError::HandleClosed),
             }

@@ -182,7 +182,7 @@ impl<C: DisplayServerController> Sequencer<C> {
                         log::error!("Received an unexpected awake from display server, is something else setting the timeouts?");
                         Ok(false)
                     }
-                    (position, SystemState::Idle)if position == ds_position  => {
+                    (position, SystemState::Idle) if position == ds_position  => {
                         self.change_position_and_notify(PositionChange::Increment).await?;
                         Ok(true)
                     }

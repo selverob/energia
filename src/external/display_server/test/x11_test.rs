@@ -56,15 +56,15 @@ where
         RustConnection::connect(None).expect("Couldn't create test connection to system X11");
     func(iface, connection, screen_num);
 }
-#[test]
-fn test_xvfb_init() {
+#[tokio::test]
+async fn test_xvfb_init() {
     with_xvfb(|_, connection, _| {
         assert_eq!(connection.setup().roots_len(), 1);
     });
 }
 
-#[test]
-fn test_error_without_extension() {
+#[tokio::test]
+async fn test_error_without_extension() {
     let (addr, mut child) = initialize_xvfb(false).expect("Xvfb initialization failed");
     let iface = x11::X11Interface::new(Some(&addr));
     assert!(iface.is_err());
@@ -75,8 +75,8 @@ fn test_error_without_extension() {
     child.wait().expect("Xvfb didn't even start");
 }
 
-#[test]
-fn test_termination() {
+#[tokio::test]
+async fn test_termination() {
     with_xvfb(|iface, _, _| {
         iface
             .terminate_watcher()
@@ -87,8 +87,8 @@ fn test_termination() {
     });
 }
 
-#[test]
-fn test_setting_and_getting_timeout() {
+#[tokio::test]
+async fn test_setting_and_getting_timeout() {
     with_xvfb(|iface, _, _| {
         let controller = iface.get_controller();
         let default = controller
@@ -115,8 +115,8 @@ fn test_setting_and_getting_timeout() {
     });
 }
 
-#[test]
-fn test_basic_flow() {
+#[tokio::test]
+async fn test_basic_flow() {
     with_xvfb(|iface, connection, screen_num| {
         let root = connection.setup().roots[screen_num].root;
         let controller = iface.get_controller();
@@ -144,8 +144,8 @@ fn test_basic_flow() {
     });
 }
 
-#[test]
-fn test_activity_forcing() {
+#[tokio::test]
+async fn test_activity_forcing() {
     with_xvfb(|iface, connection, screen_num| {
         let _ = connection.setup().roots[screen_num].root;
         let controller = iface.get_controller();
@@ -171,9 +171,9 @@ fn test_activity_forcing() {
 // coverage for X11's DPMS is merged into a single test function.
 // This will cause blinking on your local display.
 // Do not move your mouse while running the test!
-#[test]
+#[tokio::test]
 #[ignore]
-fn test_dpms() {
+async fn test_dpms() {
     with_system_x11(|iface, _, _| {
         test_dpms_state_control(iface.get_controller());
         test_dpms_levels(iface.get_controller());

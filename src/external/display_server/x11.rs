@@ -168,17 +168,20 @@ impl X11Interface {
             .check()
             .context("Couldn't set event mask for screensaver events")?;
         let (tx, rx) = watch::channel(SystemState::Awakened);
-        std::thread::spawn(move || loop {
+        tokio::task::spawn_blocking(move || loop {
             let event_result = connection.wait_for_event();
-            debug!("Received idleness event from X11");
             match event_result {
                 Err(err) => {
                     error!("Error received when waiting for idleness event: {:?}", err);
                     continue;
                 }
-                Ok(Event::ScreensaverNotify(event)) => tx
-                    .send(event.state.into())
-                    .unwrap_or_else(|err| error!("Couldn't notify about idleness event: {}", err)),
+                Ok(Event::ScreensaverNotify(event)) => {
+                    let system_state = event.state.into();
+                    debug!("Received {:?} event from X11", system_state);
+                    tx.send(system_state).unwrap_or_else(|err| {
+                        error!("Couldn't notify about idleness event: {}", err)
+                    })
+                }
                 Ok(Event::DestroyNotify(event)) => {
                     if event.window != control_window_id {
                         log::debug!("Spurious window destruction caught");

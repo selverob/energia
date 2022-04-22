@@ -107,7 +107,12 @@ impl LockEffectorActor {
                     if let Err(e) = sent_proxy.set_locked_hint(false).await {
                         log::error!("Failed to unset locked hint on the session: {}", e);
                     }
-                    let _ = sender.send(res.map(|_| ()).map_err(|e| anyhow::Error::new(e)));
+                    if let Err(_) = sender.send(res.map(|_| ()).map_err(|e| anyhow::Error::new(e)))
+                    {
+                        log::error!(
+                            "Failed to send locker termination notification to lock effector"
+                        );
+                    }
                 }
             }
         });
