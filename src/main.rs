@@ -7,6 +7,7 @@ mod control;
 mod external;
 mod system;
 
+use clap::Parser;
 use control::{dbus_controller::DBusController, environment_controller::EnvironmentController};
 use external::dependency_provider::DependencyProvider;
 use flexi_logger::{FileSpec, Logger};
@@ -24,11 +25,31 @@ use crate::{
     },
 };
 
-fn initialize_logging() -> anyhow::Result<flexi_logger::LoggerHandle> {
-    let user_home = env::var("HOME").unwrap_or("".to_owned());
-    let log_dir =
-        env::var("ENERGIA_LOG_DIR").unwrap_or(format!("{}/.config/energia/log", user_home));
-    Ok(Logger::try_with_env_or_str("info")?
+/// A modern power manager
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about=None)]
+struct Args {
+    /// Log verbosity. Either one of trace, debug, info, warn, error or a full Rust flexi_logger specification
+    #[clap(short, long, default_value_t = String::from("info"))]
+    log_level: String,
+
+    /// Directory into which to write log files. Defaults to ~/.config/energia/log/
+    #[clap(long)]
+    log_directory: Option<String>,
+
+    /// Path to the configuration file. Defaults to ~/.config/energia/config.toml
+    #[clap(long, short)]
+    config_file: Option<String>,
+}
+
+fn get_user_home() -> String {
+    env::var("HOME").unwrap_or("".to_owned())
+}
+
+fn initialize_logging(args: &Args) -> anyhow::Result<flexi_logger::LoggerHandle> {
+    let default_dir = format!("{}/.config/energia/log", get_user_home());
+    let log_dir = args.log_directory.as_ref().unwrap_or(&default_dir);
+    Ok(Logger::try_with_str(&args.log_level)?
         .log_to_file(FileSpec::default().directory(log_dir).basename("energia"))
         .format(flexi_logger::opt_format)
         .print_message()
@@ -36,22 +57,24 @@ fn initialize_logging() -> anyhow::Result<flexi_logger::LoggerHandle> {
         .start()?)
 }
 
-async fn parse_config() -> anyhow::Result<toml::Value> {
-    let user_home = env::var("HOME").unwrap_or("".to_owned());
-    let config_path = env::var("ENERGIA_CONFIG_PATH")
-        .unwrap_or(format!("{}/.config/energia/config.toml", user_home));
+async fn parse_config(args: &Args) -> anyhow::Result<toml::Value> {
+    let default_path = format!("{}/.config/energia/config.toml", get_user_home());
+    let config_path = args.config_file.as_ref().unwrap_or(&default_path);
     Ok(toml::from_slice(&fs::read(config_path).await?)?)
 }
 
 #[tokio::main]
 async fn main() {
-    let log_handle = initialize_logging();
+    let args = Args::parse();
+    let log_handle = initialize_logging(&args);
     if let Err(e) = log_handle.as_ref() {
         println!("Failed to initialize logging system: {}", e);
     }
     log_panics::init();
 
-    let config = parse_config().await.expect("Couldn't read configuration");
+    let config = parse_config(&args)
+        .await
+        .expect("Couldn't read configuration");
     log::info!("Parsed config is: {:?}", config);
 
     let mut system_dependencies = DependencyProvider::make_system()

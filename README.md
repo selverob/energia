@@ -142,17 +142,16 @@ idleness period.
 
 ## Runtime configuration
 
-There are two environment variables that can be set to control Energia's
-behavior:
+There are three flags that can be used to control Energia's behavior:
 
-* `ENERGIA_CONFIG_PATH` which sets the path to the configuration file described
+* `-c, --config-file <CONFIG_FILE>` which sets the path to the configuration file described
   above. By default, Energia will load config from `~/.config/energia/config.toml`.
-* `RUST_LOG` which sets the log verbosity. Available levels are `error`, `warn`,
+* `-l, --log-level <LOG_LEVEL>` which sets the log verbosity. Available levels are `error`, `warn`,
   `info`, `debug` and `trace`. Now during development, the default value is
   `debug`. Additional logging specification options can be found in
   `flexi_logger`'s
   [docs](https://docs.rs/flexi_logger/latest/flexi_logger/struct.LogSpecification.html).
-* `ENERGIA_LOG_DIR` which sets the directory into which the logs should be
+* `--log-directory <LOG_DIRECTORY>` which sets the directory into which the logs should be
   written. By default, this is set to `~/.config/energia/log/`.
 
 ## A list of effectors, provided effects and configurations
@@ -211,3 +210,18 @@ going to sleep, it will invoke the locker.
   ```
   bindsym $mod+Shift+l exec busctl --user call org.energia.Manager /org/energia/Manager org.energia.Manager Lock
   ```
+
+Copyright (C) 2022 Róbert Selvek
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
