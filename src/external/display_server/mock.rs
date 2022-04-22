@@ -27,7 +27,7 @@ impl Interface {
         let (sender, receiver) = watch::channel(SystemState::Awakened);
         Interface {
             shared_state: Arc::new(Mutex::new(RefCell::new(SharedState {
-                timeout: timeout,
+                timeout,
                 should_fail: false,
                 dpms_enabled: true,
                 dpms_level: super::DPMSLevel::On,
@@ -77,7 +77,8 @@ impl DisplayServerController for Controller {
         if self.state.lock().unwrap().borrow_mut().should_fail {
             Err(make_error())
         } else {
-            Ok(self.state.lock().unwrap().borrow_mut().timeout = timeout_in_seconds)
+            self.state.lock().unwrap().borrow_mut().timeout = timeout_in_seconds;
+            Ok(())
         }
     }
 

@@ -124,7 +124,7 @@ async fn main() {
     let lock_effector = effector_inventory
         .request(GetEffectorPort("lock".to_string()))
         .await
-        .map(|p| Some(p))
+        .map(Some)
         .unwrap_or(None);
 
     let dbus_controller_handle = DBusController::new(

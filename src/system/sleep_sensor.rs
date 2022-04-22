@@ -168,7 +168,7 @@ impl SleepSensor {
         tokio::select! {
             stream_val = self.sleep_signal_stream.as_mut().unwrap().next() => {
                 match stream_val {
-                    None => return Err(SleepSensorError::StateError),
+                    None => Err(SleepSensorError::StateError),
                     Some(signal) => {
                         if !signal.args()?.start {
                             log::debug!("System is going to sleep NOW");
@@ -176,9 +176,9 @@ impl SleepSensor {
                             // sleep We want it to actually go to sleep, thus the wait.
                             tokio::time::sleep(Duration::from_millis(1000)).await;
                             self.sender.as_ref().unwrap().send(SleepUpdate::WokenUp)?;
-                            return Ok(());
+                            Ok(())
                         } else {
-                            return Err(SleepSensorError::StateError)
+                            Err(SleepSensorError::StateError)
                         }
                     }
                 }

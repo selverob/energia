@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 
 use crate::armaf::ActorPort;
-use log;
 use tokio::{
     select,
     sync::{broadcast, oneshot},

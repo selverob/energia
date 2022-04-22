@@ -37,7 +37,7 @@ async fn test_actor_port() {
         .request(TestActorMessage::Increment)
         .await
         .expect_err("Expected an error from actor");
-    if let ports::ActorRequestError::ActorError(e) = error {
+    if let ports::ActorRequestError::Actor(e) = error {
         assert_eq!(e.to_string(), "Saturated");
         assert_eq!(e.kind(), std::io::ErrorKind::Other);
     } else {
@@ -63,7 +63,7 @@ async fn test_request_errors() {
         .request(TestActorMessage::Terminate)
         .await
         .expect_err("Actor should close the oneshot channel when terminating");
-    if let ports::ActorRequestError::RecvError = recv_error {
+    if let ports::ActorRequestError::Recv = recv_error {
     } else {
         panic!("A RecvError is not translated correctly");
     }
@@ -71,7 +71,7 @@ async fn test_request_errors() {
         .request(TestActorMessage::Increment)
         .await
         .expect_err("Actor request channel is still sendable after actor termination");
-    if let ports::ActorRequestError::SendError = send_error {
+    if let ports::ActorRequestError::Send = send_error {
     } else {
         panic!("A SendError is not translated correctly");
     }

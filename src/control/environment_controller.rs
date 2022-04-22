@@ -158,7 +158,7 @@ impl<D: DisplayServerController> EnvironmentController<D> {
     pub async fn spawn(mut self) -> Result<Handle> {
         let session_effector_port = self.get_effector("session").await?;
         let schedules = parse_schedules(&self.config)?;
-        if schedules.len() == 0 {
+        if schedules.is_empty() {
             return Err(anyhow!(
                 "No schedule defined. Define either schedule.external or schedule.battery."
             ));
@@ -303,8 +303,8 @@ impl<D: DisplayServerController> EnvironmentController<D> {
             (ScheduleType::Battery, ScheduleType::ExternalPower),
         ];
         for (original_type, substitution_type) in schedule_substitutions.iter() {
-            if typ == *original_type && self.sequences.contains_key(&substitution_type) {
-                return self.sequences[&substitution_type].clone();
+            if typ == *original_type && self.sequences.contains_key(substitution_type) {
+                return self.sequences[substitution_type].clone();
             }
         }
 
@@ -349,7 +349,7 @@ impl<D: DisplayServerController> EnvironmentController<D> {
         effect_names_mapping: &HashMap<String, (String, usize)>,
     ) -> Result<Vec<Action>> {
         let mut actions = Vec::new();
-        for effect in bunch.into_iter() {
+        for effect in bunch.iter() {
             // Not checking for effect validity here, that's done on schedule parsing
             let effector_name = effect_names_mapping.get(&effect.name).unwrap().0.as_ref();
             actions.push(Action::new(
@@ -363,7 +363,7 @@ impl<D: DisplayServerController> EnvironmentController<D> {
     fn idle_hint_action(&self, session_effector: EffectorPort) -> Action {
         Action::new(
             ei::get_effects_for_effector("session")[0].clone(),
-            session_effector.clone(),
+            session_effector,
         )
     }
 
@@ -481,13 +481,13 @@ impl ReconciliationContext {
             .map(|action| action.recipient.clone())
             .collect();
 
-        let execute = if actions_to_execute.len() > 0 {
+        let execute = if !actions_to_execute.is_empty() {
             Some(actions_to_execute)
         } else {
             None
         };
 
-        let rollback = if ports_to_rollback.len() > 0 {
+        let rollback = if !ports_to_rollback.is_empty() {
             Some(ports_to_rollback)
         } else {
             None
@@ -515,7 +515,7 @@ impl ReconciliationContext {
             .collect()
     }
 
-    fn effect_names_from_actions(actions: &Vec<&Action>) -> Vec<String> {
+    fn effect_names_from_actions(actions: &[&Action]) -> Vec<String> {
         actions
             .iter()
             .map(|action| action.effect.name.clone())

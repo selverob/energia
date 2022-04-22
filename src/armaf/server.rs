@@ -3,7 +3,6 @@
 use super::ActorPort;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log;
 use tokio::sync::oneshot;
 
 /// A trait which allows you to write server code for Server-like Actors (which
@@ -101,8 +100,8 @@ pub trait Server<P, R>: Send + 'static {
     /// Perform server teardown / cleanup tasks.
     ///
     /// Since this method is invoked at a non-deterministic time (after the
-    /// Actor's [ActorPort]s are dropped), the errors are only logged using
-    /// [log::error], nothing else is done with them.
+    /// Actor's [ActorPort]s are dropped), the errors are only logged,
+    /// nothing else is done with them.
     async fn tear_down(&mut self) -> Result<()> {
         Ok(())
     }
@@ -145,7 +144,7 @@ where
                     if let Err(e) = &res {
                         log::error!("{} message handler returned error: {}", name, e);
                     }
-                    if let Err(_) = req.response_sender.send(res) {
+                    if req.response_sender.send(res).is_err() {
                         log::error!(
                             "{} failed to respond to request (requester went away?)",
                             name

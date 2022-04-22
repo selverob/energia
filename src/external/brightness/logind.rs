@@ -50,7 +50,7 @@ impl BrightnessController for LogindBrightnessController {
     async fn get_brightness(&self) -> Result<usize> {
         let raw_brightness =
             read_number_from_file(&format!("{}/{}", self.device_path, "brightness")).await?;
-        Ok(((raw_brightness as f64 / self.max_brightness as f64) * 100 as f64) as usize)
+        Ok(((raw_brightness as f64 / self.max_brightness as f64) * 100f64) as usize)
     }
     async fn set_brightness(&self, percentage: usize) -> Result<()> {
         if percentage > 100 {

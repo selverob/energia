@@ -80,7 +80,7 @@ impl IdlenessController {
         if self.current_bunch == self.action_bunches.len() {
             return Err(anyhow!("No more action bunches to execute."));
         }
-        if self.is_current_bunch_inhibited().await {
+        if self.current_bunch_inhibited().await {
             return Err(anyhow!("Upcoming bunch is inhibited"));
         }
 
@@ -88,7 +88,7 @@ impl IdlenessController {
             .reconciliation_bunches
             .execute
             .take()
-            .unwrap_or(Vec::new());
+            .unwrap_or_default();
         let action_iter = reconciliation
             .iter()
             .chain(self.action_bunches[self.current_bunch].iter());
@@ -143,7 +143,7 @@ impl IdlenessController {
             .collect()
     }
 
-    async fn is_current_bunch_inhibited(&mut self) -> bool {
+    async fn current_bunch_inhibited(&mut self) -> bool {
         let inhibitors = self.get_inhibitors().await;
         let upcoming_inhibition_types: Vec<InhibitType> = dedup_inhibit_types(
             &self.action_bunches[self.current_bunch]

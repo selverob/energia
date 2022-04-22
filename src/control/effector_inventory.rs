@@ -1,3 +1,9 @@
+//! Centralized storage of effector's ActorPorts and lazy spawning of effectors
+//!
+//! This module is a hack for working around Effector trait not being object-safe
+//! and it not being possible to make it object safe with the current
+//! architecture.
+
 use crate::{
     armaf::{Effect, Effector, EffectorPort, Server},
     external::{
@@ -7,15 +13,14 @@ use crate::{
     system,
 };
 use anyhow::Result;
-/// This module is a hack working around Effector trait not being object-safe
-/// and it not being possible to make it object safe with the current
-/// architecture.
 use std::collections::HashMap;
 
+/// Get a vector of the names of all known effectors
 pub fn get_known_effector_names() -> Vec<&'static str> {
     vec!["brightness", "dpms", "session", "sleep", "lock"]
 }
 
+/// Get effects provided by the named effector
 pub fn get_effects_for_effector(effector_name: &str) -> Vec<Effect> {
     match effector_name {
         "brightness" => system::brightness_effector::BrightnessEffector.get_effects(),
@@ -81,7 +86,7 @@ pub async fn spawn_effector<B: BrightnessController, D: DisplayServer>(
     dependency_provider: &mut DependencyProvider<B, D>,
     config: Option<&toml::Value>,
 ) -> Result<EffectorPort> {
-    let config_clone = config.map(|c| c.clone());
+    let config_clone = config.cloned();
     match effector_name {
         "brightness" => {
             system::brightness_effector::BrightnessEffector

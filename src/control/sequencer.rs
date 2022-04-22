@@ -39,12 +39,12 @@ impl<C: DisplayServerController> Sequencer<C> {
         child_port: armaf::ActorPort<SystemState, (), anyhow::Error>,
         ds_controller: C,
         state_channel: watch::Receiver<SystemState>,
-        timeout_sequence: &Vec<u64>,
+        timeout_sequence: &[u64],
         starting_position: usize,
         shorten_initial_sleep_by: Duration,
     ) -> Sequencer<C> {
         Sequencer {
-            timeout_sequence: timeout_sequence.clone(),
+            timeout_sequence: timeout_sequence.to_owned(),
             current_position: starting_position,
             controller: ds_controller,
             state_channel,
@@ -309,7 +309,7 @@ impl<C: DisplayServerController> Sequencer<C> {
         }
         match e.downcast_ref::<armaf::ActorRequestError<anyhow::Error>>() {
             Some(are) => match are {
-                armaf::ActorRequestError::ActorError(actor_error) => {
+                armaf::ActorRequestError::Actor(actor_error) => {
                     log::error!("Internal error in downstream actor: {}", actor_error);
                     false
                 }

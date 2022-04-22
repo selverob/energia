@@ -96,7 +96,6 @@ impl LockEffectorActor {
             match spawn_res {
                 Err(e) => {
                     let _ = sender.send(Err(anyhow::Error::new(e)));
-                    return;
                 }
                 Ok(mut process) => {
                     if let Err(e) = sent_proxy.set_locked_hint(true).await {
@@ -107,7 +106,9 @@ impl LockEffectorActor {
                     if let Err(e) = sent_proxy.set_locked_hint(false).await {
                         log::error!("Failed to unset locked hint on the session: {}", e);
                     }
-                    if let Err(_) = sender.send(res.map(|_| ()).map_err(|e| anyhow::Error::new(e)))
+                    if sender
+                        .send(res.map(|_| ()).map_err(anyhow::Error::new))
+                        .is_err()
                     {
                         log::error!(
                             "Failed to send locker termination notification to lock effector"

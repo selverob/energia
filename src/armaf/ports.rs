@@ -43,13 +43,13 @@ impl<P, R, E> Request<P, R, E> {
 #[derive(Debug, Error, Clone)]
 pub enum ActorRequestError<E: Debug> {
     #[error("error when sending message to actor")]
-    SendError,
+    Send,
 
     #[error("error while awating request response channel")]
-    RecvError,
+    Recv,
 
     #[error("internal actor error: {0:?}")]
-    ActorError(E),
+    Actor(E),
 }
 
 /// A communication channel with an actor.
@@ -134,13 +134,13 @@ impl<P, R, E: Debug> ActorPort<P, R, E> {
     pub async fn request(&self, payload: P) -> Result<R, ActorRequestError<E>> {
         let (req, rx) = Request::new(payload);
         if self.raw_request(req).await.is_err() {
-            return Err(ActorRequestError::SendError);
+            return Err(ActorRequestError::Send);
         }
         match rx.await {
-            Err(_) => Err(ActorRequestError::RecvError),
+            Err(_) => Err(ActorRequestError::Recv),
             Ok(inner_result) => match inner_result {
                 Ok(response) => Ok(response),
-                Err(actor_error) => Err(ActorRequestError::ActorError(actor_error)),
+                Err(actor_error) => Err(ActorRequestError::Actor(actor_error)),
             },
         }
     }

@@ -1,3 +1,5 @@
+//! Exposes a D-Bus API server and executes some specified effectors
+
 use crate::armaf::{EffectorMessage, EffectorPort, Handle};
 
 pub struct DBusController {
