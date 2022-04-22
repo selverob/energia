@@ -1,3 +1,5 @@
+//! Locks the computer and allows waiting for unlock
+
 use crate::{
     armaf::{
         spawn_server, Effect, Effector, EffectorMessage, EffectorPort, RollbackStrategy, Server,

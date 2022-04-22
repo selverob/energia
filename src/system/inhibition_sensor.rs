@@ -1,3 +1,5 @@
+//! A passive sensor for discovering inhibitors submitted to logind
+
 use crate::armaf::Server;
 use anyhow::Result;
 use async_trait::async_trait;

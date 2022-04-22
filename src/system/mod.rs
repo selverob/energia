@@ -1,3 +1,5 @@
+//! System-layer actors - sensors and effectors
+
 pub mod brightness_effector;
 pub mod dpms_effector;
 pub mod inhibition_sensor;

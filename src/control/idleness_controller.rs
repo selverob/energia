@@ -1,3 +1,4 @@
+//! Executes and rolls back bunches of effects
 use std::collections::HashSet;
 
 use crate::{

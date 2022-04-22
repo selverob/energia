@@ -1,3 +1,5 @@
+//! Mock implementations of [DisplayServer] and [DisplayServerController]
+
 use super::{DisplayServer, DisplayServerController, SystemState};
 use anyhow::Result;
 use std::{

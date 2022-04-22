@@ -1,3 +1,4 @@
+//! Once notified about the system going to sleep, locks the computer
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{

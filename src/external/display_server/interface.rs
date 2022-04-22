@@ -1,3 +1,5 @@
+//! Common types for abstracting over the APIs of different display servers
+
 use anyhow::Result;
 use tokio::sync::watch::Receiver;
 

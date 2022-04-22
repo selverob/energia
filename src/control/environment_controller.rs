@@ -1,3 +1,7 @@
+//! Parses configurations, picks the correct schedule according
+//! to the environmental conditions of the computer and handles setting
+//! [Sequencer] and [IdlenessController] up
+
 use super::{
     effector_inventory::{self as ei, GetEffectorPort},
     idleness_controller::{Action, IdlenessController},

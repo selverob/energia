@@ -1,4 +1,4 @@
-//! The control-layer actors - controllers and filters
+//! Control-layer actors - controllers and filters
 
 mod broadcast_adapter;
 pub mod dbus_controller;

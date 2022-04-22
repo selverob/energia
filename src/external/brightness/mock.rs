@@ -1,3 +1,5 @@
+//! A mock implementation of [BrightnessController]
+
 use std::{
     cell::Cell,
     sync::{Arc, Mutex},

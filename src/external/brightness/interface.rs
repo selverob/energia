@@ -1,3 +1,5 @@
+//! An abstraction over screen brightness setting
+
 use anyhow::Result;
 use async_trait::async_trait;
 

@@ -1,3 +1,5 @@
+//! Sets and unsets the IdleHint on logind session
+
 use crate::{
     armaf::{
         spawn_server, Effect, Effector, EffectorMessage, EffectorPort, RollbackStrategy, Server,

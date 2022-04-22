@@ -1,3 +1,6 @@
+//! An implementation of [BrightnessController] which uses Linux's /sys/class
+//! filesystem API, with access mediated via logind
+
 use super::BrightnessController;
 use anyhow::Result;
 use async_trait::async_trait;

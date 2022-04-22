@@ -1,3 +1,5 @@
+//! Turns the computer's screen on and off using DPMS
+
 use crate::{
     armaf::{
         spawn_server, Effect, Effector, EffectorMessage, EffectorPort, RollbackStrategy, Server,

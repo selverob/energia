@@ -1,3 +1,6 @@
+//! Detects the computer's power source and battery percentage and notifies
+//! other actors about changes to them
+
 use anyhow::Result;
 use tokio::sync::watch;
 use tokio_stream::StreamExt;

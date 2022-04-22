@@ -1,3 +1,6 @@
+//! Implementations of [DisplayServer] and [DisplayServerController] which
+//! communicate with X11
+
 use std::sync::Arc;
 
 use super::{

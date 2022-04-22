@@ -1,3 +1,5 @@
+//! Implements APIs for interacting with display servers
+
 mod interface;
 
 pub use interface::*;

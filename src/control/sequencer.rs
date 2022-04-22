@@ -1,3 +1,4 @@
+//! Notifies a [Server](crate::armaf::Server) when the system goes idle, a series of timeouts pass and when the system stops being idle
 use crate::{
     armaf,
     external::display_server::{DisplayServerController, SystemState},

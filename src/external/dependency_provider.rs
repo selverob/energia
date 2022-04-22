@@ -1,3 +1,5 @@
+//! A way for actors to retrieve their dependencies when spawned
+
 use super::{
     brightness::{
         logind::LogindBrightnessController, mock::MockBrightnessController, BrightnessController,

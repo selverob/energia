@@ -1,3 +1,5 @@
+//! Suspends the computer
+
 use crate::{
     armaf::{
         spawn_server, Effect, Effector, EffectorMessage, EffectorPort, RollbackStrategy, Server,

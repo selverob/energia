@@ -1,3 +1,5 @@
+//! Detects the computer going to sleep and notifies other actors about it
+
 use std::time::Duration;
 
 use crate::armaf::{Handle, HandleChild};

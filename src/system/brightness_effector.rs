@@ -1,3 +1,5 @@
+//! Dims and undims the computer's screen
+
 use crate::{
     armaf::{
         spawn_server, Effect, Effector, EffectorMessage, EffectorPort, RollbackStrategy, Server,

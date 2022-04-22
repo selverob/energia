@@ -1,3 +1,5 @@
+//! A factory for D-Bus connections
+
 use log::info;
 use zbus;
 
