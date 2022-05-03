@@ -125,6 +125,9 @@ fn parse_schedule(schedule_config: &toml::Value) -> Result<Schedule> {
 
 type Sequence = Vec<(Duration, Vec<Action>)>;
 
+/// Parses the schedule configuration, receives notifications about power source
+/// changes and initializes [Sequencer] and [IdlenessController] for the given
+/// schedule
 pub struct EnvironmentController<D: DisplayServerController> {
     config: toml::Value,
     sequences: HashMap<ScheduleType, Sequence>,
@@ -138,6 +141,7 @@ pub struct EnvironmentController<D: DisplayServerController> {
 }
 
 impl<D: DisplayServerController> EnvironmentController<D> {
+    /// Creates a new EnvironmentController
     pub fn new(
         config: &toml::Value,
         effector_inventory: ActorPort<GetEffectorPort, EffectorPort, anyhow::Error>,
@@ -159,6 +163,7 @@ impl<D: DisplayServerController> EnvironmentController<D> {
         }
     }
 
+    /// Consumes the EnvironmentController struct and spawns its actual actor
     pub async fn spawn(mut self) -> Result<Handle> {
         let session_effector_port = self.get_effector("session").await?;
         let schedules = parse_schedules(&self.config)?;

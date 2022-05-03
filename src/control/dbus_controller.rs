@@ -2,6 +2,8 @@
 
 use crate::armaf::{EffectorMessage, EffectorPort, Handle};
 
+/// Connect to the session D-Bus as a server and present a simple API which can
+/// be used to lock the computer
 pub struct DBusController {
     path: String,
     name: String,
@@ -9,6 +11,7 @@ pub struct DBusController {
 }
 
 impl DBusController {
+    /// Create a new DBusController
     pub fn new(path: &str, name: &str, lock_effector: Option<EffectorPort>) -> DBusController {
         DBusController {
             path: path.to_string(),
@@ -17,6 +20,7 @@ impl DBusController {
         }
     }
 
+    /// Spawn the DBusController actor
     pub async fn spawn(self) -> anyhow::Result<Handle> {
         let (handle, mut handle_child) = Handle::new();
         let moved_path = self.path.clone();

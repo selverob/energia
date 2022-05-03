@@ -126,7 +126,7 @@ where
     log::debug!("{} spawning", name);
     let (port, mut rx) = ActorPort::make();
     let (initialization_sender, initialization_receiver) = oneshot::channel::<Result<()>>();
-    tokio::spawn(async move {
+    tokio::task::spawn(async move {
         let name = server.get_name();
         let init_result = server.initialize().await;
         let had_init_error = init_result.is_err();

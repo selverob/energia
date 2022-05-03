@@ -100,14 +100,17 @@ impl LockEffectorActor {
                     let _ = sender.send(Err(anyhow::Error::new(e)));
                 }
                 Ok(mut process) => {
+                    log::debug!("Locker spawned");
                     if let Err(e) = sent_proxy.set_locked_hint(true).await {
                         log::error!("Failed to set locked hint on the session: {}", e);
                     }
+                    log::debug!("Lock hint set");
                     let res = process.wait().await;
                     log::debug!("Locker has quit");
                     if let Err(e) = sent_proxy.set_locked_hint(false).await {
                         log::error!("Failed to unset locked hint on the session: {}", e);
                     }
+                    log::debug!("LockedHint unset");
                     if sender
                         .send(res.map(|_| ()).map_err(anyhow::Error::new))
                         .is_err()
@@ -116,6 +119,7 @@ impl LockEffectorActor {
                             "Failed to send locker termination notification to lock effector"
                         );
                     }
+                    log::debug!("Lock watcher quitting");
                 }
             }
         });

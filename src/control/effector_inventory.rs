@@ -32,8 +32,15 @@ pub fn get_effects_for_effector(effector_name: &str) -> Vec<Effect> {
     }
 }
 
+/// Resolve the correct effector according to the name passed in the message and
+/// get its [EffectorPort].
+///
+/// If the effector has not yet been spawned by the receiving EffectorInventory,
+/// it gets spawned.
 pub struct GetEffectorPort(pub String);
 
+/// An actor providing centralized storage of effector ports and name resolution
+/// for them
 pub struct EffectorInventory<B: BrightnessController, D: DisplayServer> {
     config: toml::Value,
     running_effectors: HashMap<String, EffectorPort>,
@@ -41,6 +48,7 @@ pub struct EffectorInventory<B: BrightnessController, D: DisplayServer> {
 }
 
 impl<B: BrightnessController, D: DisplayServer> EffectorInventory<B, D> {
+    /// Create a new EffectorInventory
     pub fn new(
         config: toml::Value,
         dependency_provider: DependencyProvider<B, D>,

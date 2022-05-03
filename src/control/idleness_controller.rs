@@ -10,6 +10,8 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use logind_zbus::manager::{InhibitType, Inhibitor, Mode};
 
+/// Contains the description of an effect and the port of the actor which needs
+/// to be messaged to execute or roll back the effect.
 #[derive(Debug, Clone)]
 pub struct Action {
     pub effect: Effect,
@@ -52,6 +54,8 @@ impl ReconciliationBunches {
     }
 }
 
+/// IdlenessController waits for messages about user idleness and either
+/// gradually executes bunches of [Action]s or rolls all effects back
 pub struct IdlenessController {
     action_bunches: Vec<Vec<Action>>,
     current_bunch: usize,
@@ -62,6 +66,7 @@ pub struct IdlenessController {
 }
 
 impl IdlenessController {
+    /// Create a new IdlenessController
     pub fn new(
         action_bunches: Vec<Vec<Action>>,
         initial_bunch: usize,
@@ -106,7 +111,11 @@ impl IdlenessController {
                 continue;
             }
             log::debug!("Applying effect {}", action.effect.name);
-            if let Err(e) = action.recipient.request(EffectorMessage::Execute).await {
+            if let Err(e) = action
+                .recipient
+                .request_with_timeout(std::time::Duration::from_secs(2), EffectorMessage::Execute)
+                .await
+            {
                 log::error!("Failed to apply effect {}: {:?}", action.effect.name, e);
                 continue;
             }

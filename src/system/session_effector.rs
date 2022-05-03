@@ -20,18 +20,11 @@ pub struct SessionEffector;
 #[async_trait]
 impl Effector for SessionEffector {
     fn get_effects(&self) -> Vec<Effect> {
-        vec![
-            Effect::new(
-                "idle_hint".to_owned(),
-                vec![InhibitType::Idle],
-                RollbackStrategy::OnActivity,
-            ),
-            Effect::new(
-                "locked_hint".to_owned(),
-                vec![InhibitType::Idle],
-                RollbackStrategy::Immediate,
-            ),
-        ]
+        vec![Effect::new(
+            "idle_hint".to_owned(),
+            vec![InhibitType::Idle],
+            RollbackStrategy::OnActivity,
+        )]
     }
 
     async fn spawn<B: BrightnessController, D: ds::DisplayServer>(

@@ -184,10 +184,12 @@ impl<C: DisplayServerController> Sequencer<C> {
                         Ok(false)
                     }
                     (position, SystemState::Idle) if position == ds_position  => {
+                        log::debug!("Incrementing position");
                         self.change_position_and_notify(PositionChange::Increment).await?;
                         Ok(true)
                     }
                     (_, SystemState::Awakened) => {
+                        log::debug!("Resetting position");
                         self.change_position_and_notify(PositionChange::Reset).await?;
                         Ok(true)
                     }

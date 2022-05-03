@@ -129,6 +129,26 @@ impl<P, R, E: Debug> ActorPort<P, R, E> {
         self.message_sender.send(r).await
     }
 
+    pub async fn request_with_timeout(
+        &self,
+        timeout: std::time::Duration,
+        payload: P,
+    ) -> Result<R, ActorRequestError<E>> {
+        let sleep = tokio::time::sleep(timeout);
+        tokio::pin!(sleep);
+
+        tokio::select! {
+            res = self.request(payload) => {
+                res
+            }
+            _ = &mut sleep => {
+                Err(ActorRequestError::Recv)
+            }
+        }
+    }
+
+    /// Constructs a [Request] with the given payload sends it on this port and
+    /// waits for the actor's response.
     /// Constructs a [Request] with the given payload sends it on this port and
     /// waits for the actor's response.
     pub async fn request(&self, payload: P) -> Result<R, ActorRequestError<E>> {
